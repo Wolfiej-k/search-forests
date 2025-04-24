@@ -6,13 +6,19 @@
 
 #define HSF_DEBUG
 #include "hsf/hsf.h"
+#include "btree/set.h"
 #include "zipf.h"
 
-struct growth_policy {
-    constexpr static double alpha = 1.1;
-    constexpr static size_t top_level_size = 256;
+struct capacity {
+    double base;
+    double fill_factor;
+    size_t top_level_size;
+    
+    capacity(double fill_factor = 1.0)
+        : base(1.1), fill_factor(fill_factor), top_level_size(256) {}
+    
     size_t operator()(size_t level) const {
-        return std::pow(alpha, std::pow(alpha, level)) * top_level_size;
+        return std::pow(base, std::pow(base, level)) * top_level_size * fill_factor;
     }
 };
 
@@ -24,12 +30,26 @@ struct counting_comparator {
     }
 };
 
-size_t index_to_level(size_t index, const growth_policy& policy) {
+struct int_wrapper {
+    int value;
+    int_wrapper(int value) : value(value) {}
+    int_wrapper() : value(0) {}
+    operator int() const {
+        return value;
+    }
+};
+
+using rbtree = std::set<int, counting_comparator>;
+using btree_linear = btree::set<int, counting_comparator>;
+using btree_binary = btree::set<int_wrapper, counting_comparator>;
+using search_forest = hsf::search_forest<capacity, rbtree>;
+
+size_t index_to_level(size_t index, const capacity& max_capacity) {
     size_t level = 0;
     size_t offset = 0;
 
     while (true) {
-        size_t capacity = policy(level);
+        size_t capacity = max_capacity(level);
         if (index < offset + capacity) {
             return level;
         }
@@ -40,7 +60,8 @@ size_t index_to_level(size_t index, const growth_policy& policy) {
 
 int main() {
     constexpr size_t N = 1'000'000;
-    zipfian_int_distribution<int> zipf(0, N-1, 0.999);
+    zipfian_int_distribution<int> zipf(0, N-1, 0.5);
+    std::normal_distribution<double> normal(10'000, 2'000);
     std::default_random_engine gen;
     
     constexpr size_t M = 1'000'000;
@@ -64,7 +85,8 @@ int main() {
     });
 
     for (size_t i = 0; i < N; i++) {
-        level[rank[i]] = index_to_level(i, growth_policy());
+        int r = i + normal(gen);
+        level[rank[i]] = index_to_level(r, capacity());
     }
 
     perm.clear();
@@ -75,7 +97,7 @@ int main() {
     using std::chrono::milliseconds;
 
     {
-       std::set<int, counting_comparator> baseline;
+        rbtree baseline;
 
         comparison_count = 0;
         auto t1 = high_resolution_clock::now();
@@ -93,21 +115,33 @@ int main() {
         }
         t2 = high_resolution_clock::now();
         elapsed = duration_cast<milliseconds>(t2 - t1).count();
-        std::cout << "red-black tree queries: " << elapsed << "ms, " << comparison_count / double(M) << " comps\n";
-
-        comparison_count = 0;
-        t1 = high_resolution_clock::now();
-        for (size_t i = 0; i < N; i++) {
-            assert(baseline.erase(i));
-        }
-        t2 = high_resolution_clock::now();
-        elapsed = duration_cast<milliseconds>(t2 - t1).count();
-        std::cout << "red-black tree deletes: " << elapsed << "ms, " << comparison_count / double(N) << " comps\n\n";
+        std::cout << "red-black tree queries: " << elapsed << "ms, " << comparison_count / double(M) << " comps\n\n";
     }
 
     {
-        using search_forest = hsf::search_forest<growth_policy, std::set<int, counting_comparator>>;
-        search_forest forest(growth_policy(), 0.5);
+        btree_binary baseline;
+
+        comparison_count = 0;
+        auto t1 = high_resolution_clock::now();
+        for (size_t i = 0; i < N; i++) {
+            baseline.insert(i);
+        }
+        auto t2 = high_resolution_clock::now();
+        auto elapsed = duration_cast<milliseconds>(t2 - t1).count();
+        std::cout << "btree build: " << elapsed << "ms, " << comparison_count / double(N) << " comps\n";
+
+        comparison_count = 0;
+        t1 = high_resolution_clock::now();
+        for (int q : queries) {
+            assert(baseline.find(q) != baseline.end());
+        }
+        t2 = high_resolution_clock::now();
+        elapsed = duration_cast<milliseconds>(t2 - t1).count();
+        std::cout << "btree queries: " << elapsed << "ms, " << comparison_count / double(M) << " comps\n\n";
+    }
+
+    {
+        search_forest forest(capacity(0.5), capacity(1.0));
 
         comparison_count = 0;
         auto t1 = high_resolution_clock::now();
@@ -127,22 +161,12 @@ int main() {
         elapsed = duration_cast<milliseconds>(t2 - t1).count();
         std::cout << "sf queries: " << elapsed << "ms, " << comparison_count / double(M) << " comps\n";
 
-        comparison_count = 0;
-        t1 = high_resolution_clock::now();
-        for (size_t i = 0; i < N; i++) {
-            assert(forest.erase(i));
-        }
-        t2 = high_resolution_clock::now();
-        elapsed = duration_cast<milliseconds>(t2 - t1).count();
-        std::cout << "sf deletes: " << elapsed << "ms, " << comparison_count / double(N) << " comps\n";
-
         std::cout << "sf compactions: " << forest.compactions_ << "\n";
         std::cout << "sf mispredictions: " << forest.mispredictions_ << "\n\n";
     }
 
     {
-        using search_forest = hsf::search_forest<growth_policy, std::set<int, counting_comparator>>;
-        search_forest forest(growth_policy(), 0.5);
+        search_forest forest(capacity(0.95), capacity(1.05));
 
         comparison_count = 0;
         auto t1 = high_resolution_clock::now();
@@ -161,15 +185,6 @@ int main() {
         t2 = high_resolution_clock::now();
         elapsed = duration_cast<milliseconds>(t2 - t1).count();
         std::cout << "fsf queries: " << elapsed << "ms, " << comparison_count / double(M) << " comps\n";
-
-        comparison_count = 0;
-        t1 = high_resolution_clock::now();
-        for (size_t i = 0; i < N; i++) {
-            assert(forest.erase(i, level[i]));
-        }
-        t2 = high_resolution_clock::now();
-        elapsed = duration_cast<milliseconds>(t2 - t1).count();
-        std::cout << "fsf deletes: " << elapsed << "ms, " << comparison_count / double(N) << " comps\n";
 
         std::cout << "fsf compactions: " << forest.compactions_ << "\n";
         std::cout << "fsf mispredictions: " << forest.mispredictions_ << "\n\n";

@@ -9,10 +9,10 @@ namespace hsf {
 
 using std::vector;
 
-template <class Policy, class Level>
+template <class Capacity, class Level>
 class search_forest {
 public:
-    using policy_type = Policy;
+    using capacity_type = Capacity;
     using level_type = Level;
     using key_type = typename level_type::key_type;
     using value_type = typename level_type::value_type;
@@ -63,15 +63,8 @@ public:
     };
     
 
-    search_forest(policy_type growth_policy, double fill_factor)
-        : growth_policy_(growth_policy),
-          fill_factor_(fill_factor),
-          total_size_(0) {
-        if (fill_factor_ < 0 || fill_factor_ >= 1) {
-            throw std::invalid_argument("flush factor not in [0, 1)");
-        }
-
-        sizes_.emplace_back(growth_policy_(0));
+    search_forest(capacity_type min_capacity, capacity_type max_capacity)
+        : min_capacity_(min_capacity), max_capacity_(max_capacity) {
         levels_.emplace_back();
     }
 
@@ -85,7 +78,6 @@ public:
 
     void insert(const value_type& value, size_type level = 0) {
         while (level >= levels_.size()) {
-            sizes_.emplace_back(growth_policy_(levels_.size()));
             levels_.emplace_back();
         }
         
@@ -94,7 +86,8 @@ public:
         
         size_type curr_levels = levels();
         for (size_type i = level; i < curr_levels; i++) {
-            if (levels_[i].size() <= sizes_[i]) {
+            auto to_compact = levels_[i].size() - min_capacity_(i);
+            if (levels_[i].size() <= max_capacity_(i) || to_compact <= 0) {
                 return;
             }
 
@@ -103,15 +96,13 @@ public:
             #endif
 
             if (i == curr_levels - 1) {
-                sizes_.emplace_back(growth_policy_(curr_levels));
                 levels_.emplace_back();
             }
 
-            auto to_compact = std::min(size_type((1 - fill_factor_) * sizes_[i]), sizes_[i]);
             auto hint = levels_[i + 1].begin();
             for (size_t j = 0; j < to_compact; j++) {
                 auto it = levels_[i].begin();
-                hint = levels_[i + 1].insert(hint, *it);
+                hint = levels_[i + 1].insert(hint, value_type(*it));
                 levels_[i].erase(it);
             }
         }
@@ -171,10 +162,9 @@ public:
 
 private:
     vector<level_type> levels_;
-    vector<size_type> sizes_;
-    [[no_unique_address]] policy_type growth_policy_;
+    [[no_unique_address]] capacity_type min_capacity_;
+    [[no_unique_address]] capacity_type max_capacity_;
     size_type total_size_;
-    double fill_factor_;
 
     template <typename T>
     auto find_impl(T& levels, const key_type& key, size_type hint) const {
