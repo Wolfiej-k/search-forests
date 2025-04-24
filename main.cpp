@@ -4,11 +4,12 @@
 #include <iostream>
 #include <set>
 
+#define HSF_DEBUG
 #include "hsf/hsf.h"
 #include "zipf.h"
 
 struct growth_policy {
-    constexpr static double alpha = 2;
+    constexpr static double alpha = 1.1;
     constexpr static size_t top_level_size = 256;
     size_t operator()(size_t level) const {
         return std::pow(alpha, std::pow(alpha, level)) * top_level_size;
@@ -63,8 +64,7 @@ int main() {
     });
 
     for (size_t i = 0; i < N; i++) {
-        size_t j = rank[i];
-        level[j] = index_to_level(i, growth_policy());
+        level[rank[i]] = index_to_level(i, growth_policy());
     }
 
     perm.clear();
@@ -134,7 +134,10 @@ int main() {
         }
         t2 = high_resolution_clock::now();
         elapsed = duration_cast<milliseconds>(t2 - t1).count();
-        std::cout << "sf deletes: " << elapsed << "ms, " << comparison_count / double(N) << " comps\n\n";
+        std::cout << "sf deletes: " << elapsed << "ms, " << comparison_count / double(N) << " comps\n";
+
+        std::cout << "sf compactions: " << forest.compactions_ << "\n";
+        std::cout << "sf mispredictions: " << forest.mispredictions_ << "\n\n";
     }
 
     {
@@ -166,6 +169,9 @@ int main() {
         }
         t2 = high_resolution_clock::now();
         elapsed = duration_cast<milliseconds>(t2 - t1).count();
-        std::cout << "fsf deletes: " << elapsed << "ms, " << comparison_count / double(N) << " comps\n\n";
+        std::cout << "fsf deletes: " << elapsed << "ms, " << comparison_count / double(N) << " comps\n";
+
+        std::cout << "fsf compactions: " << forest.compactions_ << "\n";
+        std::cout << "fsf mispredictions: " << forest.mispredictions_ << "\n\n";
     }
 }

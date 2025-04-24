@@ -94,9 +94,13 @@ public:
         
         size_type curr_levels = levels();
         for (size_type i = level; i < curr_levels; i++) {
-            if (levels_[i].size() < sizes_[i]) {
+            if (levels_[i].size() <= sizes_[i]) {
                 return;
             }
+
+            #ifdef HSF_DEBUG
+            compactions_++;
+            #endif
 
             if (i == curr_levels - 1) {
                 sizes_.emplace_back(growth_policy_(curr_levels));
@@ -160,6 +164,11 @@ public:
         return false;
     }
 
+    #ifdef HSF_DEBUG
+    mutable size_type compactions_ = 0;
+    mutable size_type mispredictions_ = 0;
+    #endif
+
 private:
     vector<level_type> levels_;
     vector<size_type> sizes_;
@@ -175,6 +184,9 @@ private:
             if (i < levels.size()) {
                 auto it = levels[i].find(key);
                 if (it != levels[i].end()) {
+                    #ifdef HSF_DEBUG
+                    if (i != hint) mispredictions_++;
+                    #endif
                     return std::make_pair(it, size_type(i));
                 }
                 i++;
@@ -183,11 +195,18 @@ private:
             if (j >= 0) {
                 auto it = levels[j].find(key);
                 if (it != levels[j].end()) {
+                    #ifdef HSF_DEBUG
+                    mispredictions_++;
+                    #endif
                     return std::make_pair(it, size_type(j));
                 }
                 j--;
             }
         }
+
+        #ifdef HSF_DEBUG
+        mispredictions_++;
+        #endif
 
         return std::make_pair(iterator_type{}, size_type(-1));
     }
