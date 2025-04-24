@@ -39,7 +39,7 @@ size_t index_to_level(size_t index, const growth_policy& policy) {
 }
 
 int main() {
-    constexpr size_t N = 10'000'000;
+    constexpr size_t N = 1'000'000;
     zipfian_int_distribution<int> zipf(0, N-1, 0.999);
     std::default_random_engine gen;
     
