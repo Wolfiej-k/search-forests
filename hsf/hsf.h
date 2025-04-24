@@ -94,7 +94,7 @@ public:
         
         size_type curr_levels = levels();
         for (size_type i = level; i < curr_levels; i++) {
-            if (levels_[i].size() < sizes_[i]) {
+            if (levels_[i].size() <= sizes_[i]) {
                 return;
             }
 

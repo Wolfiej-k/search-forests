@@ -8,7 +8,7 @@
 #include "zipf.h"
 
 struct growth_policy {
-    constexpr static double alpha = 2;
+    constexpr static double alpha = 1.1;
     constexpr static size_t top_level_size = 256;
     size_t operator()(size_t level) const {
         return std::pow(alpha, std::pow(alpha, level)) * top_level_size;
@@ -38,7 +38,7 @@ size_t index_to_level(size_t index, const growth_policy& policy) {
 }
 
 int main() {
-    constexpr size_t N = 10'000'000;
+    constexpr size_t N = 1'000'000;
     zipfian_int_distribution<int> zipf(0, N-1, 0.999);
     std::default_random_engine gen;
     
