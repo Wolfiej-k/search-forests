@@ -2,7 +2,6 @@
 #define HSF_PREDICTIONS_H
 
 #include <algorithm>
-#include <concepts>
 #include <cstdint>
 #include <functional>
 #include <limits>
@@ -12,7 +11,6 @@
 namespace hsf {
 
 template <class Key, class Value = uint8_t, class Hash = std::hash<Key>>
-    requires std::unsigned_integral<Value>
 class prediction_sketch {
 public:
     using key_type = Key;

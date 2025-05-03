@@ -1,5 +1,5 @@
 CXX := g++
-CXXFLAGS := -std=c++20 -O3 -w
+CXXFLAGS := -std=c++17 -O3 -w
 INCLUDES := -I
 
 DEBUGFLAGS := -g -O0
