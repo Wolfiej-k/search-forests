@@ -2,28 +2,25 @@
 #define HSF_HSF_H
 
 #include <algorithm>
-#include <stdexcept>
 #include <vector>
 
 namespace hsf {
 
-using std::vector;
+template <typename Derived>
+struct forest_traits;
 
-template <class Capacity, class Level>
+template <typename Derived>
 class search_forest {
 public:
-    using capacity_type = Capacity;
-    using level_type = Level;
+    using level_type = typename forest_traits<Derived>::level_type;
+    using capacity_type = typename forest_traits<Derived>::capacity_type;
     using key_type = typename level_type::key_type;
     using value_type = typename level_type::value_type;
     using size_type = typename level_type::size_type;
     using level_iterator = typename level_type::iterator;
-    using const_level_iterator = typename level_type::const_iterator;
 
     struct iterator {
-        level_iterator iter_;
-        size_type level_;
-
+    public:
         value_type& operator*() { 
             return *iter_; 
         }
@@ -39,166 +36,119 @@ public:
         bool operator!=(const iterator& other) const {
             return !(*this == other);
         }
-    };
 
-    struct const_iterator {
-        const_level_iterator iter_;
+        size_type level() const {
+            return level_;
+        }
+
+    private:
+        friend class search_forest;
+        level_iterator iter_;
         size_type level_;
 
-        const value_type& operator*() const { 
-            return *iter_; 
-        }
-        
-        const value_type* operator->() const { 
-            return &(*iter_); 
-        }
-
-        bool operator==(const const_iterator& other) const {
-            return level_ == other.level_ && iter_ == other.iter_;
-        }
-
-        bool operator!=(const const_iterator& other) const {
-            return !(*this == other);
-        }
+        explicit iterator(level_iterator iter, size_type level)
+            : iter_(iter), level_(level) {}
     };
-    
 
-    search_forest(capacity_type min_capacity, capacity_type max_capacity)
-        : min_capacity_(min_capacity), max_capacity_(max_capacity) {
+    explicit search_forest(capacity_type min_capacity, capacity_type max_capacity)
+        : min_capacity_(min_capacity), max_capacity_(max_capacity), total_size_(0) {
         levels_.emplace_back();
     }
 
     size_type size() const {
         return total_size_;
     }
+
+    size_type size(size_type level) const {
+        if (level >= levels()) {
+            return 0;
+        }
+        return levels_[level].size();
+    }
+
+    std::pair<size_type, size_type> capacity(size_type level) const {
+        return std::make_pair(min_capacity_(level), max_capacity_(level));
+    }
     
     size_type levels() const {
         return levels_.size();
     }
 
-    void insert(const value_type& value, size_type level = 0) {
+    iterator find(const key_type& key, size_type hint) {
+        for (size_type i = hint; i < levels_.size(); i++) {
+            auto it = levels_[i].find(key);
+            if (it != levels_[i].end()) {
+#ifdef HSF_DEBUG
+                if (i != hint) {
+                    mispredictions_++;
+                }
+#endif
+                return iterator(it, i);
+            }
+        }
+        return end();
+    }
+
+    iterator insert(const value_type& value, size_type level) {
         while (level >= levels_.size()) {
             levels_.emplace_back();
         }
         
-        levels_[level].insert(value);
-        total_size_++;
-        
-        size_type curr_levels = levels();
-        for (size_type i = level; i < curr_levels; i++) {
-            auto to_compact = levels_[i].size() - min_capacity_(i);
-            if (levels_[i].size() <= max_capacity_(i) || to_compact <= 0) {
-                return;
-            }
-
-            #ifdef HSF_DEBUG
+        auto it = levels_[level].insert(value).first;
+#ifdef HSF_DEBUG
+        if (levels_[level].size() > max_capacity_(level)) {
             compactions_++;
-            #endif
-
-            if (i == curr_levels - 1) {
-                levels_.emplace_back();
-            }
-
-            auto hint = levels_[i + 1].begin();
-            for (size_t j = 0; j < to_compact; j++) {
-                auto it = levels_[i].begin();
-                hint = levels_[i + 1].insert(hint, value_type(*it));
-                levels_[i].erase(it);
-            }
         }
-    }
-    
-    iterator find(const key_type& key, size_type hint = 0) {
-        auto [it, level] = find_impl(levels_, key, hint);
-        return iterator{it, level};
-    }
-    
-    
-    const_iterator find(const key_type& key, size_type hint = 0) const {
-        auto [it, level] = find_impl(levels_, key, hint);
-        return const_iterator{it, level};
+#endif
+        total_size_++;
+        return iterator(it, level);
     }
 
-    iterator begin() {
+    void erase(iterator it) {
+        levels_[it.level_].erase(it.iter_);
+#ifdef HSF_DEBUG
+        if (levels_[it.level_].size() < min_capacity_(it.level_)) {
+            promotions_++;
+        }
+#endif
+        total_size_--;
+    }
+
+    iterator begin() const {
         for (size_type i = 0; i < levels(); i++) {
             if (!levels_[i].empty()) {
-                return { levels_[i].begin(), i };
+                return iterator(levels_[i].begin(), i);
             }
         }
         return end();
     }
 
-    const_iterator begin() const {
-        for (size_type i = 0; i < levels(); i++) {
-            if (!levels_[i].empty()) {
-                return { levels_[i].begin(), i };
-            }
-        }
-        return end();
+    iterator end() const {
+        return iterator({}, size_type(-1));
     }
 
-    iterator end() {
-        return { {}, size_type(-1) };
-    }
-
-    const_iterator end() const {
-        return { {}, size_type(-1) };
-    }
-
-    bool erase(const key_type& key, size_type hint = 0) {
-        auto it = find(key, hint);
-        if (it != end()) {
-            levels_[it.level_].erase(it.iter_);
-            total_size_--;
-            return true;
-        }
-        return false;
-    }
-
-    #ifdef HSF_DEBUG
+#ifdef HSF_DEBUG
     mutable size_type compactions_ = 0;
+    mutable size_type promotions_ = 0;
     mutable size_type mispredictions_ = 0;
-    #endif
+#endif
 
-private:
-    vector<level_type> levels_;
+protected:
     [[no_unique_address]] capacity_type min_capacity_;
     [[no_unique_address]] capacity_type max_capacity_;
+    std::vector<level_type> levels_;
     size_type total_size_;
+};
 
-    template <typename T>
-    auto find_impl(T& levels, const key_type& key, size_type hint) const {
-        using iterator_type = decltype(levels[0].find(key));
-        ptrdiff_t i = hint, j = hint - 1;
-        while (i < levels.size() || j >= 0) {
-            if (i < levels.size()) {
-                auto it = levels[i].find(key);
-                if (it != levels[i].end()) {
-                    #ifdef HSF_DEBUG
-                    if (i != hint) mispredictions_++;
-                    #endif
-                    return std::make_pair(it, size_type(i));
-                }
-                i++;
-            }
+struct capacity {
+    double base;
+    double scale;
 
-            if (j >= 0) {
-                auto it = levels[j].find(key);
-                if (it != levels[j].end()) {
-                    #ifdef HSF_DEBUG
-                    mispredictions_++;
-                    #endif
-                    return std::make_pair(it, size_type(j));
-                }
-                j--;
-            }
-        }
+    constexpr capacity(double fill_factor, double base = 1.1, size_t top_size = 256) 
+        : base(base), scale(top_size * fill_factor / base) {}
 
-        #ifdef HSF_DEBUG
-        mispredictions_++;
-        #endif
-
-        return std::make_pair(iterator_type{}, size_type(-1));
+    constexpr size_t operator()(size_t level) const {
+        return std::pow(base, std::pow(base, level)) * scale;
     }
 };
 
