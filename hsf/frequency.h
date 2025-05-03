@@ -59,21 +59,18 @@ public:
 
         auto freq_it = frequencies_[level].insert({frequency, key});
         auto it = parent_type::insert({key, freq_it}, level);
-
         compact_level(level);
-        assert(frequencies_[level].size() == parent_type::size(level));
-
         return it;
     }
 
-    void erase(iterator it) {
-        size_type level = it.level();
-        frequencies_[level].erase(it->second);
-        parent_type::erase(it);
+    // void erase(iterator it) {
+    //     size_type level = it.level();
+    //     frequencies_[level].erase(it->second);
+    //     parent_type::erase(it);
 
-        fill_level(level);
-        assert(frequencies_[level].size() == parent_type::size(level));
-    }
+    //     fill_level(level);
+    //     assert(frequencies_[level].size() == parent_type::size(level));
+    // }
 
 private:
     std::vector<std::multimap<uint32_t, key_type>> frequencies_;
@@ -89,10 +86,10 @@ private:
         }
 
         auto node = frequencies_[from_level].extract(from_it->second);
-        parent_type::erase(from_it);
-
         node.key() = frequency;
         auto freq_it = frequencies_[to_level].insert(std::move(node));
+
+        parent_type::erase(from_it);
         return parent_type::insert({key, freq_it}, to_level);
     }
 
@@ -110,18 +107,25 @@ private:
             
             compact_level(level + 1);
         }
+        
+        assert(frequencies_[level].size() == parent_type::size(level));
     }
     
     void fill_level(size_type level) {
         auto [min_cap, _] = parent_type::capacity(level);
         size_type level_size = parent_type::size(level);
 
-        if (level < frequencies_.size() - 1 && level_size < min_cap) {
-            assert(!frequencies_[level + 1].empty());
-            auto [max_freq, max_key] = *frequencies_[level + 1].rbegin();
-            move_level(max_key, level + 1, level, max_freq);
-            fill_level(level + 1);
+        if (level == 0) {
+            assert(frequencies_.size() > 1 || level_size >= min_cap);
+            return;
         }
+
+        assert(!frequencies_[level - 1].empty());
+        assert(frequencies_[level - 1].begin()->first >= frequencies_[level].rbegin() -> first);
+        
+        auto [min_freq, min_key] = *frequencies_[level - 1].begin();
+        move_level(min_key, level - 1, level, min_freq);
+        fill_level(level - 1);
     }
 };
 
@@ -163,9 +167,9 @@ public:
         return it;
     }
 
-    void erase(iterator it) {
-        parent_type::erase(it);
-    }
+    // void erase(iterator it) {
+    //     parent_type::erase(it);
+    // }
 
 private:
     struct heap_element {
