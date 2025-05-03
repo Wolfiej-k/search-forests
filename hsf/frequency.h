@@ -63,15 +63,6 @@ public:
         return it;
     }
 
-    // void erase(iterator it) {
-    //     size_type level = it.level();
-    //     frequencies_[level].erase(it->second);
-    //     parent_type::erase(it);
-
-    //     fill_level(level);
-    //     assert(frequencies_[level].size() == parent_type::size(level));
-    // }
-
 private:
     std::vector<std::multimap<uint32_t, key_type>> frequencies_;
 
@@ -154,7 +145,7 @@ public:
     using value_type = typename parent_type::value_type;
     using size_type = typename parent_type::size_type;
     using iterator = typename parent_type::iterator;
-    using parent_type::search_forest;
+    using parent_type::parent_type;
 
     iterator find(const key_type& key, size_type hint = 0) {
         return parent_type::find(key, hint);
@@ -166,10 +157,6 @@ public:
         compact_level(level);
         return it;
     }
-
-    // void erase(iterator it) {
-    //     parent_type::erase(it);
-    // }
 
 private:
     struct heap_element {
