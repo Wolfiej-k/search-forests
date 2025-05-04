@@ -54,7 +54,7 @@ using robustsl_comparator = counting_comparator<&robustsl_comparisons>;
 using robustsl = hsf::bench::skiplist<key_t, robustsl_comparator>;
 
 template <typename Gen>
-auto generate_queries(size_t num_keys, size_t num_queries, double alpha, Gen& gen) {
+auto generate_zipf_queries(size_t num_keys, size_t num_queries, double alpha, Gen& gen) {
     zipfian_int_distribution<key_t> zipf(0, num_keys - 1, alpha);
     
     std::vector<size_t> perm(num_keys);
@@ -205,7 +205,7 @@ int main() {
     constexpr double ZIPF_ALPHA = 2.0;
     
     std::default_random_engine gen(42);
-    auto queries = generate_queries(NUM_KEYS, NUM_QUERIES, ZIPF_ALPHA, gen);
+    auto queries = generate_zipf_queries(NUM_KEYS, NUM_QUERIES, ZIPF_ALPHA, gen);
 
     benchmark(queries, NUM_KEYS, gen);
 }
