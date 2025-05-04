@@ -114,8 +114,7 @@ private:
         auto [min_cap, _] = parent_type::capacity(level);
         size_type level_size = parent_type::size(level);
 
-        if (level == 0) {
-            assert(frequencies_.size() > 1 || level_size >= min_cap);
+        if (level == 0 || level_size > min_cap) {
             return;
         }
 
