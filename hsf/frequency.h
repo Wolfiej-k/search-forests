@@ -1,3 +1,6 @@
+#ifndef HSF_FREQUENCY_H
+#define HSF_FREQUENCY_H
+
 #include <algorithm>
 #include <cassert>
 #include <limits>
@@ -45,7 +48,7 @@ public:
         if (level > 0 && new_frequency > frequencies_[level - 1].begin()->first) {
             std::cout << "Moving key " << key << " with new frequency " << new_frequency << " from level " << level << " to level " << level - 1 << std::endl;
             std::cout << "Level " << level - 1 << ": size " << frequencies_[level - 1].size() << ", max freq " << frequencies_[level - 1].rbegin()->first << ", min freq " << frequencies_[level - 1].begin()->first << std::endl;
-            it = move_level(key, level, level - 1, new_frequency);
+            it = move_iterator(it, level - 1, new_frequency);
             compact_level(level - 1);
             fill_level(level);
         }
@@ -68,20 +71,25 @@ public:
 private:
     std::vector<std::multimap<uint32_t, key_type>> frequencies_;
 
-    iterator move_level(const key_type& key, size_type from_level, size_type to_level, uint32_t frequency) {
-        while (to_level >= frequencies_.size()) {
-            frequencies_.emplace_back();
-        }
-
+    iterator move_key(const key_type& key, size_type from_level, size_type to_level, uint32_t frequency) {
         auto from_it = parent_type::find(key, from_level);
         if (from_it == parent_type::end()) {
             return parent_type::end();
         }
 
-        auto node = frequencies_[from_level].extract(from_it->second);
+        return move_iterator(from_it, to_level, frequency);
+    }
+
+    iterator move_iterator(iterator from_it, size_type to_level, uint32_t frequency) {
+        while (to_level >= frequencies_.size()) {
+            frequencies_.emplace_back();
+        }
+
+        auto node = frequencies_[from_it.level()].extract(from_it->second);
         node.key() = frequency;
         auto freq_it = frequencies_[to_level].insert(std::move(node));
 
+        auto key = from_it->first;
         parent_type::erase(from_it);
         return parent_type::insert({key, freq_it}, to_level);
     }
@@ -94,7 +102,7 @@ private:
             while (level_size > min_cap) {
                 assert(!frequencies_[level].empty());
                 auto [min_freq, min_key] = *frequencies_[level].begin();
-                move_level(min_key, level, level + 1, min_freq);
+                move_key(min_key, level, level + 1, min_freq);
                 level_size--;
             }
             
@@ -121,7 +129,7 @@ private:
         assert(frequencies_[level - 1].begin()->first >= frequencies_[level].rbegin()->first);
         
         auto [min_freq, min_key] = *frequencies_[level - 1].begin();
-        move_level(min_key, level - 1, level, min_freq);
+        move_key(min_key, level - 1, level, min_freq);
         fill_level(level - 1);
     }
 };
@@ -217,3 +225,5 @@ struct forest_traits<learned_frequency_forest<Capacity, Container, Key, Args...>
 };
 
 }
+
+#endif
