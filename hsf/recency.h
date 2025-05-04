@@ -14,16 +14,16 @@ template <
     typename Key,
     typename... Args
 >
-class frequency_forest : public search_forest<frequency_forest<Capacity, Container, Key, Args...>> {
+class recency_forest : public search_forest<recency_forest<Capacity, Container, Key, Args...>> {
 public:
-    using parent_type = search_forest<frequency_forest<Capacity, Container, Key, Args...>>; 
+    using parent_type = search_forest<recency_forest<Capacity, Container, Key, Args...>>; 
     using key_type = typename parent_type::key_type;
     using value_type = typename parent_type::value_type;
     using size_type = typename parent_type::size_type;
     using iterator = typename parent_type::iterator;
 
     template <typename... Params>
-    explicit frequency_forest(Params&&... params) 
+    explicit recency_forest(Params&&... params) 
         : parent_type(std::forward<Params>(params)...) {
         recencies_.emplace_back();
     }
@@ -45,7 +45,12 @@ public:
     }
 
     iterator insert(const key_type& key) {
-        
+        size_type level = parent_type::levels() - 1;
+        recencies_[level].push_front(key);
+        auto rec_it = recencies_[level].begin();
+        auto it = parent_type::insert({key, rec_it}, level);
+        compact_level(level);
+        return it;
     }
 
 private:
@@ -61,8 +66,8 @@ private:
     }
 
     iterator move_iterator(iterator from_it, size_type to_level) {
-        while (to_level >= frequencies_.size()) {
-            frequencies_.emplace_back();
+        while (to_level >= recencies_.size()) {
+            recencies_.emplace_back();
         }
 
         auto& from_list = recencies_[from_it.level()];
@@ -96,7 +101,7 @@ private:
         auto [min_cap, _] = parent_type::capacity(level);
         size_type level_size = parent_type::size(level);
 
-        if (level == 0 || level_size > min_cap) {
+        if (level == 0 || level == parent_type::levels() - 1 || level_size >= min_cap) {
             return;
         }
 
@@ -106,6 +111,18 @@ private:
         move_key(min_key, level - 1, level);
         fill_level(level - 1);
     }
+};
+
+template <
+    typename Capacity,
+    template <typename, typename, typename...> class Container,
+    typename Key,
+    typename... Args
+>
+struct forest_traits<recency_forest<Capacity, Container, Key, Args...>> {
+    using metadata_type = typename std::list<Key>::iterator;
+    using level_type = Container<Key, metadata_type, Args...>;
+    using capacity_type = Capacity;
 };
 
 }

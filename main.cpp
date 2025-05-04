@@ -10,6 +10,7 @@
 
 #define HSF_DEBUG
 #include "hsf/frequency.h"
+#include "hsf/recency.h"
 #include "hsf/prediction.h"
 #include "btree/map.h"
 #include "skiplist/skip_list.h"
@@ -159,7 +160,7 @@ int main() {
     auto rank = compute_ranks(frequency);
     auto levels = compute_sl_levels(frequency, gen);
 
-    ForestWithCompare<CountingCmpForest> forest(capacity(1.0, 2.0), capacity(1.1, 2.0));
+    ForestWithCompare<CountingCmpForest> forest(capacity(1.0, 2.0), capacity(1.0, 2.0));
     LearnedForestWithCompare<CountingCmpLForest> learned_forest(capacity(1.0, 1.1), capacity(1.1, 1.1));
     MapWithCompare<CountingCmpRB> rb_tree;
     RobustSLWithCompare<CountingCmpSL> robust_sl;
