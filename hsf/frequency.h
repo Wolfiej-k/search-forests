@@ -3,7 +3,7 @@
 
 #include <algorithm>
 #include <cassert>
-#include <limits>
+#include <cmath>
 #include <map>
 #include <queue>
 #include <vector>
@@ -159,8 +159,9 @@ public:
     using iterator = typename parent_type::iterator;
     using parent_type::parent_type;
 
-    iterator find(const key_type& key, size_type hint = 0) {
-        return parent_type::find(key, hint);
+    iterator find(const key_type& key, size_type rank) {
+        size_type level = prediction_to_level(rank, parent_type::min_capacity_);
+        return parent_type::find(key, level);
     }
 
     iterator insert(const key_type& key, size_type rank) {
@@ -176,33 +177,38 @@ private:
         uint32_t rank;
 
         bool operator<(const heap_element& other) const {
-            return rank < other.rank;
+            return rank > other.rank;
         }
     };
+
+    iterator move_iterator(iterator from_it, size_type to_level) {
+        auto [key, rank] = *from_it;
+        parent_type::erase(from_it);
+        return parent_type::insert({key, rank}, to_level);
+    }
 
     void compact_level(size_type level) {
         auto [min_cap, max_cap] = parent_type::capacity(level);
         size_type level_size = parent_type::size(level);
 
         if (level_size > max_cap) {
-            std::priority_queue<heap_element> min_ranks;
+            std::priority_queue<heap_element> max_ranks;
             for (const auto& [key, rank] : parent_type::levels_[level]) {
-                if (min_ranks.size() < level_size - min_cap) {
-                    min_ranks.push({key, rank});
-                } else if (rank < min_ranks.top().rank) {
-                    min_ranks.pop();
-                    min_ranks.push({key, rank});
+                if (max_ranks.size() < level_size - min_cap) {
+                    max_ranks.push({key, rank});
+                } else if (rank > max_ranks.top().rank) {
+                    max_ranks.pop();
+                    max_ranks.push({key, rank});
                 }
             }
 
-            while (!min_ranks.empty()) {
-                auto element = min_ranks.top();
-                min_ranks.pop();
+            while (!max_ranks.empty()) {
+                auto element = max_ranks.top();
+                max_ranks.pop();
 
                 auto it = parent_type::find(element.key, level);
                 assert(it != parent_type::end());
-                parent_type::erase(it);
-                parent_type::insert({element.key, element.rank}, level + 1);
+                move_iterator(it, level + 1);
             }
 
             compact_level(level + 1);

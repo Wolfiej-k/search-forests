@@ -1,234 +1,211 @@
-#include <iostream>
-#include <map>
-#include <chrono>
-#include <random>
-#include <vector>
-#include <atomic>
 #include <cassert>
+#include <cstddef>
+#include <deque>
 #include <iomanip>
+#include <iostream>
 #include <set>
+#include <unordered_set>
+#include <vector>
 
 #define HSF_DEBUG
 #include "hsf/frequency.h"
 #include "hsf/recency.h"
-#include "hsf/prediction.h"
-#include "btree/map.h"
-#include "skiplist/skip_list.h"
-#include "treap.h"
-#include "zipf.h"
 
-using namespace hsf;
-using namespace std::chrono;
+#include "benchmark/treap.h"
+#include "benchmark/skiplist.h"
+#include "benchmark/zipf.h"
 
-size_t forest_comparisons{0};
-size_t lforest_comparisons{0};
-size_t rb_comparisons{0};
-size_t sl_comparisons{0};
-
-struct CountingCmpForest {
-    bool operator()(int a, int b) const {
-        ++forest_comparisons;
-        return a < b;
+template <size_t* Counter>
+struct counting_comparator {
+    bool operator()(int left, int right) const {
+        ++(*Counter);
+        return left < right;
     }
 };
 
-struct CountingCmpLForest {
-    bool operator()(int a, int b) const {
-        ++lforest_comparisons;
-        return a < b;
-    }
-};
+using key_t = int;
 
-struct CountingCmpRB {
-    bool operator()(int a, int b) const {
-        ++rb_comparisons;
-        return a < b;
-    }
-};
+static size_t rbtree_comparisons = 0;
+using rbtree_comparator = counting_comparator<&rbtree_comparisons>;
+using rbtree = std::set<key_t, rbtree_comparator>;
 
-struct CountingCmpSL {
-    bool operator()(int a, int b) const {
-        ++sl_comparisons;
-        return a < b;
-    }
-};
+static size_t fforest_comparisons = 0;
+using fforest_comparator = counting_comparator<&fforest_comparisons>;
+using fforest = hsf::frequency_forest<hsf::capacity, std::map, key_t, fforest_comparator>;
 
-struct Key {
-    int value;
-    Key(int value) : value(value) {}
-    Key() : value(0) {}
-    operator int() const {
-        return value;
-    }
-};
+static size_t learned_fforest_comparisons = 0;
+using learned_fforest_comparator = counting_comparator<&learned_fforest_comparisons>;
+using learned_fforest = hsf::learned_frequency_forest<hsf::capacity, std::map, key_t, learned_fforest_comparator>;
 
-template<class Key, class Value, class Compare = std::less<Key>, class Alloc = std::allocator<std::pair<const Key, Value>>>
-using BTreeMap = btree::map<Key, Value, Compare, Alloc, 256>;
+static size_t rforest_comparisons = 0;
+using rforest_comparator = counting_comparator<&rforest_comparisons>;
+using rforest = hsf::recency_forest<hsf::capacity, std::map, key_t, rforest_comparator>;
 
-template<typename Compare>
-using MapWithCompare = std::map<Key, int, Compare>;
+static size_t learned_rforest_comparisons = 0;
+using learned_rforest_comparator = counting_comparator<&learned_rforest_comparisons>;
+using learned_rforest = hsf::learned_recency_forest<hsf::capacity, std::map, key_t, learned_rforest_comparator>;
 
-template<typename Compare>
-using ForestWithCompare = frequency_forest<capacity, std::map, Key, Compare>;
+static size_t learned_treap_comparisons = 0;
+using learned_treap_comparator = counting_comparator<&learned_treap_comparisons>;
+using learned_treap = hsf::bench::treap<key_t, learned_treap_comparator>;
 
-template<typename Compare>
-using LearnedForestWithCompare = learned_frequency_forest<capacity, std::map, Key, Compare>;
+static size_t robustsl_comparisons = 0;
+using robustsl_comparator = counting_comparator<&robustsl_comparisons>;
+using robustsl = hsf::bench::skiplist<key_t, robustsl_comparator>;
 
-template<typename Compare>
-using RobustSLWithCompare = goodliffe::skip_list<Key, Compare>;
-
-constexpr size_t NUM_KEYS = 1'000'000;
-constexpr size_t NUM_ACCESSES = 1'000'000;
-constexpr double ZIPF_THETA = 0.5;
-
-auto generate_queries(std::default_random_engine& gen) {
-    zipfian_int_distribution<int> zipf(0, NUM_KEYS - 1, ZIPF_THETA);
-
-    std::vector<size_t> frequency(NUM_KEYS);
-    std::vector<Key> queries;
-    queries.reserve(NUM_ACCESSES);
-
-    std::vector<int> perm(NUM_KEYS);
+template <typename Gen>
+auto generate_queries(size_t num_keys, size_t num_queries, double alpha, Gen& gen) {
+    zipfian_int_distribution<key_t> zipf(0, num_keys - 1, alpha);
+    
+    std::vector<size_t> perm(num_keys);
     std::iota(perm.begin(), perm.end(), 0);
     std::shuffle(perm.begin(), perm.end(), gen);
-    
-    for (size_t i = 0; i < NUM_ACCESSES; i++) {
-        auto query = perm[zipf(gen)];;
-        queries.push_back(query);
-        frequency[query]++;
+
+    std::vector<key_t> queries(num_queries);
+    for (size_t i = 0; i < num_queries; i++) {
+        queries[i] = perm[zipf(gen)];
     }
 
-    return std::make_pair(queries, frequency);
+    return queries;
 }
 
-auto compute_ranks(const std::vector<size_t>& freq) {
-    size_t n = freq.size();
-    std::vector<size_t> rank(n);
-    std::vector<std::pair<size_t, size_t>> indexed_freq;
+auto compute_accesses(const std::vector<key_t>& queries, size_t num_keys) {
+    std::vector<std::deque<size_t>> accesses(num_keys);
+    
+    size_t distinct_accesses = 0;
+    size_t prev_query = 0;
+    for (const auto& key : queries) {
+        auto& queue = accesses[key];
+        size_t prev_access = queue.empty() ? 0 : queue.back();
+        queue.push_back(distinct_accesses - prev_access);
 
-    for (size_t i = 0; i < n; ++i) {
-        indexed_freq.emplace_back(i, freq[i]);
+        if (key != prev_query) {
+            distinct_accesses++;
+        }
+        prev_query = key;
     }
 
-    std::sort(indexed_freq.begin(), indexed_freq.end(), [](auto& a, auto& b) {
-        if (a.second != b.second)
-            return a.second > b.second;
-        return a.first < b.first;
+    return accesses;
+}
+
+auto compute_ranks(const std::vector<std::deque<size_t>>& accesses) {
+    std::vector<size_t> ranks(accesses.size());
+    std::vector<std::pair<size_t, size_t>> indexed_frequencies(accesses.size());
+    for (size_t i = 0; i < accesses.size(); i++) {
+        indexed_frequencies[i] = std::make_pair(i, accesses[i].size());
+    }
+
+    std::sort(indexed_frequencies.begin(), indexed_frequencies.end(), [](auto& left, auto& right) {
+        if (left.second != right.second) {
+            return left.second > right.second;
+        }
+        return left.first < right.first;
     });
 
-    for (size_t i = 0; i < n; ++i) {
-        rank[indexed_freq[i].first] = i;
+    for (size_t i = 0; i < accesses.size(); ++i) {
+        ranks[indexed_frequencies[i].first] = i;
     }
 
-    return rank;
+    return ranks;
 }
 
-auto compute_sl_levels(const std::vector<size_t>& freq, std::default_random_engine& gen) {
-    double p = 0.368;
-    double theta = 0.05;
-    double K = 1 + std::ceil(log2(log2(NUM_KEYS)) - log2(2 * log2(theta) / log2(p)));
-    
-    std::vector<int> D(K+1, 0);
-    std::geometric_distribution<> geom(1-p);
-    
-    D[0] = std::ceil(log2(theta) / log2(p));
-    for (int i = 1; i <= K; i++) {
-        D[i] = D[i-1] + std::ceil(log2(theta) / log2(p) * (1 << i));
+void reset_comparisons() {
+    fforest_comparisons = 0;
+    learned_fforest_comparisons = 0;
+    rforest_comparisons = 0;
+    learned_rforest_comparisons = 0;
+    rbtree_comparisons = 0;
+    robustsl_comparisons = 0;
+    learned_treap_comparisons = 0;
+}
+
+void print_comparisons(size_t num_ops) {
+    double fforest_avg = double(fforest_comparisons) / num_ops;
+    double learned_fforest_avg = double(learned_fforest_comparisons) / num_ops;
+    double rforest_avg = double(rforest_comparisons) / num_ops;
+    double learned_rforest_avg = double(learned_rforest_comparisons) / num_ops;
+    double rbtree_avg = double(rbtree_comparisons) / num_ops;
+    double robustsl_avg = double(robustsl_comparisons) / num_ops;
+    double learned_treap_avg = double(learned_treap_comparisons) / num_ops;
+
+    std::cout << "  red-black tree:     " << std::fixed << std::setprecision(2) << rbtree_avg << "\n";
+    std::cout << "  f-forest:           " << std::fixed << std::setprecision(2) << fforest_avg << "\n";
+    std::cout << "  learned f-forest:   " << std::fixed << std::setprecision(2) << learned_fforest_avg << "\n";
+    std::cout << "  r-forest:           " << std::fixed << std::setprecision(2) << rforest_avg << "\n";
+    std::cout << "  learned r-forest:   " << std::fixed << std::setprecision(2) << learned_rforest_avg << "\n";
+    std::cout << "  robust-sl:          " << std::fixed << std::setprecision(2) << robustsl_avg << "\n";
+    std::cout << "  learned treap:      " << std::fixed << std::setprecision(2) << learned_treap_avg << "\n";
+}
+
+template <typename Gen>
+void benchmark(const std::vector<key_t>& queries, size_t num_keys, Gen& gen) {
+    auto accesses = compute_accesses(queries, num_keys);
+    auto ranks = compute_ranks(accesses);
+    auto levels = hsf::bench::skiplist_levels(accesses, num_keys, queries.size(), gen);
+
+    fforest ff(hsf::capacity(1.0, 2.0), hsf::capacity(1.0, 2.0));
+    learned_fforest lff(hsf::capacity(1.0, 1.1), hsf::capacity(1.1, 1.1));
+    rforest rf(hsf::capacity(1.0, 2.0), hsf::capacity(1.0, 2.0));
+    learned_rforest lrf(hsf::capacity(1.0, 1.1), hsf::capacity(1.1, 1.1));
+    rbtree rb;
+    robustsl sl;
+    learned_treap treap;
+
+    reset_comparisons();
+    for (key_t key = 0; key < num_keys; key++) {
+        ff.insert(key);
+        lff.insert(key, ranks[key]);
+        rf.insert(key);
+        lrf.insert(key, accesses[key].empty() ? -1 : accesses[key].front());
+        rb.insert(key);
+        sl.insert(key, levels[key]);
+        treap.insert(key, ranks[key]);
     }
 
-    std::vector<size_t> levels(NUM_KEYS);
-    for (int i = 0; i < NUM_KEYS; i++) {
-        double f = double(freq[i]) / double(NUM_ACCESSES);
-        int c;
-        if (f >= theta) {
-            c = 0;
-        } else if (f == 0) {
-            c = K;
-        } else {
-            c = std::ceil(log2(-std::min(-log2(f), -log2(p) * log2(NUM_KEYS) / 2) / log2(theta)));
-        }
+    std::cout << "\n================== INSERTS ==================\n";
+    std::cout << "Total: " << num_keys << "\n";
+    std::cout << "Comparisons: \n";
+    print_comparisons(num_keys);
 
-        levels[i] = D[K] - D[c] + geom(gen) + 1;
+    reset_comparisons();
+    for (const auto& key : queries) {
+        auto it1 = ff.find(key);
+        assert(it1 != ff.end() && it1->first == key);
+
+        auto it2 = lff.find(key, ranks[key]);
+        assert(it2 != lff.end() && it2->first == key);
+
+        auto it3 = rf.find(key);
+        assert(it3 != rf.end() && it3->first == key);
+
+        size_t prev_access = accesses[key].front();
+        accesses[key].pop_front();
+        size_t next_access = accesses[key].empty() ? -1 : accesses[key].front();
+        auto it4 = lrf.find(key, prev_access, next_access);
+
+        auto it5 = rb.find(key);
+        assert(it5 != rb.end() && *it5 == key);
+
+        auto it6 = sl.find(key);
+        assert(it6 != sl.end());
+
+        auto it7 = treap.find(key);
+        assert(it7 != nullptr && it7->key == key);
     }
 
-    return levels;
+    std::cout << "\n================== QUERIES ==================\n";
+    std::cout << "Total: " << num_keys << "\n";
+    std::cout << "Comparisons: \n";
+    print_comparisons(queries.size());
 }
 
 int main() {
-    std::default_random_engine gen;
-    auto [queries, frequency] = generate_queries(gen);
-    auto rank = compute_ranks(frequency);
-    auto levels = compute_sl_levels(frequency, gen);
+    constexpr size_t NUM_KEYS = 1'000'000;
+    constexpr size_t NUM_QUERIES = 1'000'000;
+    constexpr double ZIPF_ALPHA = 2.0;
+    
+    std::default_random_engine gen(42);
+    auto queries = generate_queries(NUM_KEYS, NUM_QUERIES, ZIPF_ALPHA, gen);
 
-    ForestWithCompare<CountingCmpForest> forest(capacity(1.0, 2.0), capacity(1.0, 2.0));
-    LearnedForestWithCompare<CountingCmpLForest> learned_forest(capacity(1.0, 1.1), capacity(1.1, 1.1));
-    MapWithCompare<CountingCmpRB> rb_tree;
-    RobustSLWithCompare<CountingCmpSL> robust_sl;
-    learned_treap treap;
-
-    for (int i = 0; i < NUM_KEYS; ++i) {
-        forest.insert(i);
-        learned_forest.insert(i, rank[i]);
-        rb_tree[i] = i;
-        robust_sl.insert(i, levels[i]);
-        treap.insert(i, rank[i]);
-    }
-
-    forest_comparisons = 0;
-    lforest_comparisons = 0;
-    rb_comparisons = 0;
-    sl_comparisons = 0;
-    treap.ncomparisons = 0;
-
-    for (Key k : queries) {
-        auto it1 = forest.find(k);
-        assert(it1 != forest.end() && it1->first == k);
-
-        auto it2 = learned_forest.find(k, prediction_to_level(rank[k], capacity(1.0)));
-        assert(it2 != learned_forest.end() && it2->first == k);
-
-        auto it3 = rb_tree.find(k);
-        assert(it3 != rb_tree.end() && it3->first == k);
-
-        auto it4 = robust_sl.find(k);
-        assert(it4 != robust_sl.end());
-
-        auto it5 = treap.find(k);
-        assert(it5 != nullptr);
-    }
-
-    std::cout << "\n================== COMPARISON COUNT ==================\n";
-    std::cout << "Total lookups: " << NUM_ACCESSES << "\n";
-    std::cout << "Comparisons (forest):         " << forest_comparisons << "\n";
-    std::cout << "Comparisons (learned_forest): " << lforest_comparisons << "\n";
-    std::cout << "Comparisons (learned_treap):  " << treap.ncomparisons << "\n";
-    std::cout << "Comparisons (robust_sl):      " << sl_comparisons << "\n";
-    std::cout << "Comparisons (std::map):       " << rb_comparisons << "\n";
-
-    double avg_forest = double(forest_comparisons) / NUM_ACCESSES;
-    double avg_lforest = double(lforest_comparisons) / NUM_ACCESSES;
-    double avg_sl = double(sl_comparisons) / NUM_ACCESSES;
-    double avg_treap = double(treap.ncomparisons) / NUM_ACCESSES;
-    double avg_rb = double(rb_comparisons) / NUM_ACCESSES;
-    std::cout << "Avg comparisons per access:\n";
-    std::cout << "  forest:         " << std::fixed << std::setprecision(2) << avg_forest << "\n";
-    std::cout << "  learned_forest: " << std::fixed << std::setprecision(2) << avg_lforest << "\n";
-    std::cout << "  robust_sl:      " << std::fixed << std::setprecision(2) << avg_sl << "\n";
-    std::cout << "  learned_treap:  " << std::fixed << std::setprecision(2) << avg_treap << "\n";
-    std::cout << "  std::map:       " << avg_rb << "\n";
-
-    std::cout << "\n================== FOREST STATS ==================\n";
-    std::cout << "Total compactions: " << forest.compactions_ << "\n";
-    std::cout << "Total promotions:  " << forest.promotions_ << "\n";
-    std::cout << "Total mispredictions: " << forest.mispredictions_ << "\n";
-    std::cout << "Levels:            " << forest.levels() << "\n";
-
-    std::cout << "\n================== LEARNED FOREST STATS ==================\n";
-    std::cout << "Total compactions: " << learned_forest.compactions_ << "\n";
-    std::cout << "Total promotions:  " << learned_forest.promotions_ << "\n";
-    std::cout << "Total mispredictions: " << learned_forest.mispredictions_ << "\n";
-    std::cout << "Levels:            " << learned_forest.levels() << "\n";
-
-    return 0;
+    benchmark(queries, NUM_KEYS, gen);
 }
-

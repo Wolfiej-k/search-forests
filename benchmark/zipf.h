@@ -139,10 +139,10 @@
     *
     * @param __a [IN]  The lower bound of the distribution.
     * @param __b [IN]  The upper bound of the distribution.
-    * @param __theta [IN]  The skew factor of the distribution.
+    * @param __alpha [IN]  The skew factor of the distribution.
     */
-   explicit zipfian_int_distribution(_IntType __a = _IntType(0), _IntType __b = _IntType(1), double __theta = 0.99)
-   : _M_param(__a, __b, __theta)
+   explicit zipfian_int_distribution(_IntType __a = _IntType(0), _IntType __b = _IntType(1), double __alpha = 100)
+   : _M_param(__a, __b, 1 - (1 / __alpha))
    { }
  
    explicit zipfian_int_distribution(const param_type& __p) : _M_param(__p)

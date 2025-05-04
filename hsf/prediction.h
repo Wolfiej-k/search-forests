@@ -10,7 +10,7 @@
 
 namespace hsf {
 
-template <class Key, class Value = uint8_t, class Hash = std::hash<Key>>
+template <typename Key, typename Value = uint8_t, typename Hash = std::hash<Key>>
 class prediction_sketch {
 public:
     using key_type = Key;
@@ -71,7 +71,7 @@ private:
     }
 };
 
-template <class Capacity>
+template <typename Capacity>
 size_t prediction_to_level(size_t prediction, const Capacity& capacity) {
     size_t level = 0;
     size_t offset = 0;

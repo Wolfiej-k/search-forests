@@ -24,8 +24,6 @@
 
 namespace goodliffe {
 
-static unsigned long ncomparison = 0;
-
 /// @internal
 /// Internal namespace for impementation of skip list data structure
 namespace detail
@@ -1073,11 +1071,9 @@ sl_impl<T,C,A,LG,D>::find(const value_type &value) const
         --l;
         while (search->next[l] != tail)
         {
-            ncomparison++;
-            // cout << "level " << l << " " << search->next[l]->value << " " << value << "\n";
-            if (!detail::less_or_equal(search->next[l]->value, value, less)) {
+            if (less(value, search->next[l]->value)) {
                 break;
-            } else if (equivalent(search->next[l]->value, value, less)) {
+            } else if (!less(search->next[l]->value, value)) {
                 return search->next[l];
             }
             search = search->next[l];
