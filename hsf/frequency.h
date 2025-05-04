@@ -45,11 +45,16 @@ public:
         it->second = frequencies_[level].insert(std::move(node));
 
         auto new_frequency = it->second->first;
-        for (int i = level; i > 0 && new_frequency > frequencies_[i - 1].begin()->first; i--) {
-            it = move_iterator(it, i-1, new_frequency);
-            compact_level(i-1);
+        size_type new_level = level;
+        while (new_level > 0 && new_frequency > frequencies_[new_level - 1].begin()->first) {
+            new_level--;
         }
-        fill_level(level);
+
+        if (new_level != level) {
+            it = move_iterator(it, new_level, new_frequency);
+            compact_level(new_level);
+            fill_level(level);
+        }
 
         return it;
     }
@@ -114,9 +119,7 @@ private:
         auto [min_cap, _] = parent_type::capacity(level);
         size_type level_size = parent_type::size(level);
 
-        if (level == 0 || level_size > min_cap) {
-            return;
-        } else if (level == parent_type::levels() - 1 || level_size >= min_cap) {
+        if (level == 0 || level == parent_type::levels() - 1 || level_size >= min_cap) {
             return;
         }
 
@@ -126,13 +129,6 @@ private:
         auto [min_freq, min_key] = *frequencies_[level - 1].begin();
         move_key(min_key, level - 1, level, min_freq);
         fill_level(level - 1);
-    }
-
-    void print_levels(size_type level) {
-        for (int i = 0; i <= level; i++) {
-            std::cout << "Level " << i << ": size " << frequencies_[i].size() << ", max freq " << frequencies_[i].rbegin()->first << ", min freq " << frequencies_[i].begin()->first << std::endl;
-        }
-        std::cout << std::endl;
     }
 };
 
