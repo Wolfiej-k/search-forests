@@ -173,15 +173,39 @@ py::dict benchmark(const std::vector<key_t>& queries, size_t num_keys, std::defa
     print_comparisons(num_keys);
 
     py::dict insert_stats;
+    py::dict insert_stats_comparisons;
+    py::dict insert_stats_compactions;
+    py::dict insert_stats_mispredictions;
+    py::dict insert_stats_promotions;
     
-    insert_stats["rbtree"] = double(rbtree_comparisons) / num_keys;
-    insert_stats["f-forest"] = double(fforest_comparisons) / num_keys;
-    insert_stats["learned-f-forest"] = double(learned_fforest_comparisons) / num_keys;
-    insert_stats["r-forest"] = double(rforest_comparisons) / num_keys;
-    insert_stats["learned-r-forest"] = double(learned_rforest_comparisons) / num_keys;
-    insert_stats["robust-sl"] = double(robustsl_comparisons) / num_keys;
-    insert_stats["learned-treap"] = double(learned_treap_comparisons) / num_keys;
+    insert_stats_comparisons["rbtree"] = double(rbtree_comparisons) / num_keys;
+    insert_stats_comparisons["f-forest"] = double(fforest_comparisons) / num_keys;
+    insert_stats_comparisons["learned-f-forest"] = double(learned_fforest_comparisons) / num_keys;
+    insert_stats_comparisons["r-forest"] = double(rforest_comparisons) / num_keys;
+    insert_stats_comparisons["learned-r-forest"] = double(learned_rforest_comparisons) / num_keys;
+    insert_stats_comparisons["robust-sl"] = double(robustsl_comparisons) / num_keys;
+    insert_stats_comparisons["learned-treap"] = double(learned_treap_comparisons) / num_keys;
+    
+    insert_stats_compactions["f-forest"] = ff.compactions_;
+    insert_stats_compactions["learned-f-forest"] = lff.compactions_;
+    insert_stats_compactions["r-forest"] = rf.compactions_;
+    insert_stats_compactions["learned-r-forest"] = lrf.compactions_;
 
+    insert_stats_mispredictions["f-forest"] = ff.mispredictions_;
+    insert_stats_mispredictions["learned-f-forest"] = lff.mispredictions_;
+    insert_stats_mispredictions["r-forest"] = rf.mispredictions_;
+    insert_stats_mispredictions["learned-r-forest"] = lrf.mispredictions_;
+
+    insert_stats_promotions["f-forest"] = ff.promotions_;
+    insert_stats_promotions["learned-f-forest"] = lff.promotions_;
+    insert_stats_promotions["r-forest"] = rf.promotions_;
+    insert_stats_promotions["learned-r-forest"] = lrf.promotions_;
+
+    insert_stats["comparisons"] = insert_stats_comparisons;
+    insert_stats["compactions"] = insert_stats_compactions;
+    insert_stats["mispredictions"] = insert_stats_mispredictions;
+    insert_stats["promotions"] = insert_stats_promotions;
+    
     reset_comparisons();
     for (const auto& key : queries) {
         auto it1 = ff.find(key);
@@ -214,13 +238,38 @@ py::dict benchmark(const std::vector<key_t>& queries, size_t num_keys, std::defa
     print_comparisons(queries.size());
 
     py::dict query_stats;
-    query_stats["rbtree"] = double(rbtree_comparisons) / queries.size();
-    query_stats["f-forest"] = double(fforest_comparisons) / queries.size();
-    query_stats["learned-f-forest"] = double(learned_fforest_comparisons) / queries.size();
-    query_stats["r-forest"] = double(rforest_comparisons) / queries.size();
-    query_stats["learned-r-forest"] = double(learned_rforest_comparisons) / queries.size();
-    query_stats["robust-sl"] = double(robustsl_comparisons) / queries.size();
-    query_stats["learned-treap"] = double(learned_treap_comparisons) / queries.size();
+    py::dict query_stats_comparisons;
+    py::dict query_stats_compactions;
+    py::dict query_stats_mispredictions;
+    py::dict query_stats_promotions;
+
+    query_stats_comparisons["rbtree"] = double(rbtree_comparisons) / queries.size();
+    query_stats_comparisons["f-forest"] = double(fforest_comparisons) / queries.size();
+    query_stats_comparisons["learned-f-forest"] = double(learned_fforest_comparisons) / queries.size();
+    query_stats_comparisons["r-forest"] = double(rforest_comparisons) / queries.size();
+    query_stats_comparisons["learned-r-forest"] = double(learned_rforest_comparisons) / queries.size();
+    query_stats_comparisons["robust-sl"] = double(robustsl_comparisons) / queries.size();
+    query_stats_comparisons["learned-treap"] = double(learned_treap_comparisons) / queries.size();
+
+    query_stats_compactions["f-forest"] = ff.compactions_;
+    query_stats_compactions["learned-f-forest"] = lff.compactions_;
+    query_stats_compactions["r-forest"] = rf.compactions_;
+    query_stats_compactions["learned-r-forest"] = lrf.compactions_;
+
+    query_stats_mispredictions["f-forest"] = ff.mispredictions_;
+    query_stats_mispredictions["learned-f-forest"] = lff.mispredictions_;
+    query_stats_mispredictions["r-forest"] = rf.mispredictions_;
+    query_stats_mispredictions["learned-r-forest"] = lrf.mispredictions_;
+
+    query_stats_promotions["f-forest"] = ff.promotions_;
+    query_stats_promotions["learned-f-forest"] = lff.promotions_;
+    query_stats_promotions["r-forest"] = rf.promotions_;
+    query_stats_promotions["learned-r-forest"] = lrf.promotions_;
+
+    query_stats["comparisons"] = query_stats_comparisons;
+    query_stats["compactions"] = query_stats_compactions;
+    query_stats["mispredictions"] = query_stats_mispredictions;
+    query_stats["promotions"] = query_stats_promotions;
 
     py::dict res;
     res["inserts"] = insert_stats;
