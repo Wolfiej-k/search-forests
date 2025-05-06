@@ -115,6 +115,26 @@ auto compute_ranks(const std::vector<std::deque<size_t>>& accesses) {
     return ranks;
 }
 
+auto compute_adv_ranks(const std::vector<std::deque<size_t>>& accesses, double delta) {
+    // delta = 0 is perfect rank, delta = 0.99 is adversarial
+    std::vector<size_t> true_ranks = compute_ranks(accesses);
+
+    int n = accesses.size();
+    std::vector<size_t> adv_ranks(n);
+
+    for (size_t i = 0; i < n; ++i) {
+        double r = static_cast<double>(true_ranks[i]);
+        double mirror = static_cast<double>(n) - r - 1.0;
+        double perturbed = r * (1.0 - delta) + mirror * delta;
+
+        size_t r_i = static_cast<size_t>(std::lround(perturbed));
+        if (r_i >= n) r_i = n - 1;    // clamping
+        adv_ranks[i] = r_i;
+    }
+
+    return adv_ranks;
+}
+
 void reset_comparisons() {
     fforest_comparisons = 0;
     learned_fforest_comparisons = 0;
@@ -143,9 +163,9 @@ void print_comparisons(size_t num_ops) {
     std::cout << "  learned treap:      " << std::fixed << std::setprecision(2) << learned_treap_avg << "\n";
 }
 
-py::dict benchmark(const std::vector<key_t>& queries, size_t num_keys, std::default_random_engine& gen) {
+py::dict benchmark(const std::vector<key_t>& queries, size_t num_keys, double delta, std::default_random_engine& gen) {
     auto accesses = compute_accesses(queries, num_keys);
-    auto ranks = compute_ranks(accesses);
+    auto ranks = compute_adv_ranks(accesses, delta);
     auto levels = hsf::bench::skiplist_levels(accesses, num_keys, queries.size(), gen);
 
     fforest ff(hsf::capacity(1.0, 2.0), hsf::capacity(1.0, 2.0));
@@ -289,13 +309,13 @@ PYBIND11_MODULE(benchmark_module, m) {
 
     m.def("generate_zipf_queries",
           &generate_zipf_queries,
-          "generate_zipf_queries(num_keys: int, num_queries: int, alpha: float, gen: PythonEngine) -> List[int]",
+          "generate_zipf_queries(num_keys: int, num_queries: int, alpha: float, gen: RandomEngine) -> List[int]",
           py::arg("num_keys"), py::arg("num_queries"), py::arg("alpha"), py::arg("gen"));
 
     m.def("benchmark",
           &benchmark,
-          "benchmark(queries: List[int], num_keys: int, gen: PythonEngine) -> Dict[str, Dict[str, float]]",
-          py::arg("queries"), py::arg("num_keys"), py::arg("gen"));
+          "benchmark(queries: List[int], num_keys: int, delta: float, gen: RandomEngine) -> Dict[str, Dict[str, float]]",
+          py::arg("queries"), py::arg("num_keys"), py::arg("delta"), py::arg("gen"));
 }
 
 // int main() {
