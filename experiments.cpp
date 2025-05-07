@@ -55,8 +55,7 @@ static size_t robustsl_comparisons = 0;
 using robustsl_comparator = counting_comparator<&robustsl_comparisons>;
 using robustsl = hsf::bench::skiplist<key_t, robustsl_comparator>;
 
-template <typename Gen>
-auto generate_zipf_queries(size_t num_keys, size_t num_queries, double alpha, Gen& gen) {
+auto generate_zipf_queries(size_t num_keys, size_t num_queries, double alpha, std::mt19937& gen) {
     zipfian_int_distribution<key_t> zipf(0, num_keys - 1, alpha);
     
     std::vector<size_t> perm(num_keys);
@@ -269,10 +268,10 @@ py::dict benchmark(const std::vector<key_t>& queries, size_t num_keys, double de
 PYBIND11_MODULE(benchmark_module, m) {
     m.doc() = "Benchmarking module for search-forests";
 
-    py::class_<std::default_random_engine>(m, "RandomEngine")
+    py::class_<std::mt19937>(m, "RandomEngine")
         .def(py::init<unsigned long>(), py::arg("seed"))
-        .def("__call__", [](std::default_random_engine &eng) {
-            return eng();
+        .def("__call__", [](std::mt19937& gen) {
+            return gen();
         });
 
     m.def("generate_zipf_queries",
@@ -285,14 +284,3 @@ PYBIND11_MODULE(benchmark_module, m) {
           "benchmark(queries: List[int], num_keys: int, delta: float, gen: RandomEngine) -> Dict[str, Dict[str, float]]",
           py::arg("queries"), py::arg("num_keys"), py::arg("delta"), py::arg("gen"));
 }
-
-// int main() {
-//     constexpr size_t NUM_KEYS = 1'000'000;
-//     constexpr size_t NUM_QUERIES = 1'000'000;
-//     constexpr double ZIPF_ALPHA = 2.0;
-    
-//     std::default_random_engine gen(42);
-//     auto queries = generate_zipf_queries(NUM_KEYS, NUM_QUERIES, ZIPF_ALPHA, gen);
-
-//     benchmark(queries, NUM_KEYS, gen);
-// }
