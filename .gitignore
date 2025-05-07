@@ -32,5 +32,12 @@
 *.app
 main
 
+# Benchmarks
+*.pkl
+*.csv
+
 # VS Code
 .vscode
+
+# Other
+.DS_STORE

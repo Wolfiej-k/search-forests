@@ -12,8 +12,8 @@ all: main
 %: %.cc
 	$(CXX) $(CXXFLAGS) -o $* $<
 
-exp:
-	$(CXX) $(CXXFLAGS) $(PYBIND11_INCLUDE) $(SHARED) $(ARCHFLAGS) exp.cpp -o benchmark_module.cpython-312-darwin.so
+experiments:
+	$(CXX) $(CXXFLAGS) $(PYBIND11_INCLUDE) $(SHARED) $(ARCHFLAGS) experiments.cpp -o benchmark_module.cpython-312-darwin.so
 
 run-%: %
 	./$<
