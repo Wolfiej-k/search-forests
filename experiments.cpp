@@ -63,8 +63,13 @@ void reset_comparisons() {
 }
 
 template <typename Gen>
-py::dict benchmark(const std::vector<int>& queries, const std::vector<size_t>& frequencies, std::vector<std::deque<size_t>>& accesses, Gen& gen) {
-    auto ranks = hsf::bench::compute_ranks(frequencies);
+py::dict benchmark(
+    const std::vector<int>& queries, 
+    const std::vector<size_t>& frequencies, 
+    const std::vector<size_t>& ranks, 
+    std::vector<std::deque<size_t>>& accesses, 
+    Gen& gen
+) {    
     auto levels = hsf::bench::skiplist_levels(frequencies, queries.size(), gen);
     size_t num_keys = frequencies.size();
     size_t num_queries = queries.size();
@@ -205,16 +210,21 @@ PYBIND11_MODULE(benchmark_module, m) {
     
     m.def("generate_noisy_frequencies",
           &hsf::bench::generate_noisy_frequencies<int, std::mt19937>,
-          "generate_noisy_frequencies(queries: List[int], num_keys: int, delta: int, gen: RandomEngine) -> List[int]",
-          py::arg("queries"), py::arg("num_keys"), py::arg("delta"), py::arg("gen"));
-    
+          "generate_noisy_frequencies(queries: List[int], num_keys: int, epsilon: int, delta: int, gen: RandomEngine) -> List[int]",
+          py::arg("queries"), py::arg("num_keys"), py::arg("epsilon"), py::arg("delta"), py::arg("gen"));
+
+    m.def("generate_noisy_ranks",
+          &hsf::bench::generate_noisy_ranks<std::mt19937>,
+          "generate_noisy_ranks(frequencies: List[int], epsilon: int, delta: int, gen: RandomEngine) -> List[int]",
+          py::arg("frequencies"), py::arg("epsilon"), py::arg("delta"), py::arg("gen"));
+
     m.def("generate_noisy_accesses",
           &hsf::bench::generate_noisy_accesses<int, std::mt19937>,
-          "generate_noisy_accesses(queries: List[int], num_keys: int, delta: int, gen: RandomEngine) -> List[List[int]]",
-          py::arg("queries"), py::arg("num_keys"), py::arg("delta"), py::arg("gen"));
+          "generate_noisy_accesses(queries: List[int], num_keys: int, epsilon: int, delta: int, gen: RandomEngine) -> List[List[int]]",
+          py::arg("queries"), py::arg("num_keys"), py::arg("epsilon"), py::arg("delta"), py::arg("gen"));
 
     m.def("benchmark",
           &benchmark<std::mt19937>,
-          "benchmark(queries: List[int], frequencies: List[int], accesses: List[List[int]], gen: RandomEngine) -> Dict[str, Dict[str, float]]",
-          py::arg("queries"), py::arg("frequencies"), py::arg("accesses"), py::arg("gen"));
+          "benchmark(queries: List[int], frequencies: List[int], ranks: List[int], accesses: List[List[int]], gen: RandomEngine) -> Dict[str, Dict[str, float]]",
+          py::arg("queries"), py::arg("frequencies"), py::arg("ranks"), py::arg("accesses"), py::arg("gen"));
 }

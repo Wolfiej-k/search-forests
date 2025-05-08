@@ -2,8 +2,11 @@
 #define HSF_BENCHMARK_H
 
 #include <algorithm>
+#include <cfloat>
+#include <cmath>
 #include <deque>
 #include <vector>
+#include <iostream>
 
 #include "zipf.h"
 
@@ -26,51 +29,53 @@ std::vector<Key> generate_zipf_queries(size_t num_keys, size_t num_queries, doub
     return queries;
 }
 
+template <typename Gen>
+size_t scale_and_shift(size_t value, size_t max_value, size_t epsilon, size_t delta, Gen& gen) {
+    if (epsilon < 1.0) {
+        throw std::invalid_argument("invalid error");
+    }
+    
+    std::uniform_real_distribution<double> scale(1.0, std::nextafter(epsilon, DBL_MAX));
+    std::uniform_real_distribution<double> shift(-static_cast<double>(delta), std::nextafter(delta, DBL_MAX));
+    std::bernoulli_distribution bern(0.5);
+
+    double scale_value = epsilon == 1 ? 1 : scale(gen);
+    double shift_value = delta == 0 ? 0 : shift(gen);
+    double new_value;
+    if (bern(gen)) {
+        new_value = value * scale_value + shift_value;
+    } else {
+        new_value = value / scale_value + shift_value;
+    }
+
+    return std::clamp<size_t>(std::round<size_t>(new_value), static_cast<size_t>(0), max_value);
+}
+
 template <typename Key, typename Gen>
-std::vector<size_t> generate_noisy_frequencies(const std::vector<Key>& queries, size_t num_keys, size_t delta, Gen& gen) {
+std::vector<size_t> generate_noisy_frequencies(const std::vector<Key>& queries, size_t num_keys, size_t epsilon, size_t delta, Gen& gen) {
     std::vector<size_t> frequencies(num_keys);
     for (const auto& query : queries) {
         frequencies[query]++;
     }
-
-    std::uniform_int_distribution<Key> unif(1, delta);
-    std::bernoulli_distribution bern(0.5);
     
-    for (auto& freq : frequencies) {
-        size_t scale = unif(gen);
-        if (bern(gen)) {
-            freq *= scale;
-        } else {
-            freq /= scale;
-        }
+    for (size_t i = 0; i < frequencies.size(); i++) {
+        frequencies[i] = scale_and_shift(frequencies[i], queries.size(), epsilon, delta, gen);
     }
 
     return frequencies;
 }
 
 template <typename Key, typename Gen>
-std::vector<std::deque<size_t>> generate_noisy_accesses(const std::vector<Key>& queries, size_t num_keys, size_t delta, Gen& gen) {
+std::vector<std::deque<size_t>> generate_noisy_accesses(const std::vector<Key>& queries, size_t num_keys, size_t epsilon, size_t delta, Gen& gen) {
     std::vector<std::deque<size_t>> accesses(num_keys);
 
-    std::uniform_int_distribution<Key> unif(1, delta);
-    std::bernoulli_distribution bern(0.5);
     size_t distinct_accesses = 0;
     size_t prev_query = 0;
-    
     for (const auto& query : queries) {
         auto& queue = accesses[query];
         size_t prev_access = queue.empty() ? 0 : queue.back();
         size_t next_access = distinct_accesses - prev_access;
-        
-        // size_t scale = unif(gen);
-        // if (bern(gen)) {
-        //     next_access *= scale;
-        // } else {
-        //     next_access /= scale;
-        // }
-        // next_access = std::min(next_access, queries.size() - 1);
-        
-        queue.push_back(next_access);
+        queue.push_back(scale_and_shift(next_access, num_keys, epsilon, delta, gen));
 
         if (query != prev_query) {
             distinct_accesses++;
@@ -81,7 +86,8 @@ std::vector<std::deque<size_t>> generate_noisy_accesses(const std::vector<Key>& 
     return accesses;
 }
 
-std::vector<size_t> compute_ranks(const std::vector<size_t>& frequencies) {
+template <typename Gen>
+std::vector<size_t> generate_noisy_ranks(const std::vector<size_t>& frequencies, size_t epsilon, size_t delta, Gen& gen) {
     std::vector<size_t> indices(frequencies.size());
     std::iota(indices.begin(), indices.end(), 0);
     std::sort(indices.begin(), indices.end(), [&](size_t left, size_t right) {
@@ -93,7 +99,7 @@ std::vector<size_t> compute_ranks(const std::vector<size_t>& frequencies) {
     
     std::vector<size_t> ranks(frequencies.size());
     for (size_t i = 0; i < frequencies.size(); i++) {
-        ranks[indices[i]] = i;
+        ranks[indices[i]] = scale_and_shift(i, frequencies.size(), epsilon, delta, gen);
     }
     
     return ranks;
