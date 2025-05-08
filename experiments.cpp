@@ -1,8 +1,7 @@
 #include <cassert>
 #include <cstddef>
-#include <deque>
+#include <random>
 #include <set>
-#include <vector>
 
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
@@ -13,7 +12,7 @@
 
 #include "benchmark/treap.h"
 #include "benchmark/skiplist.h"
-#include "benchmark/zipf.h"
+#include "benchmark/benchmark.h"
 
 namespace py = pybind11;
 
@@ -25,143 +24,68 @@ struct counting_comparator {
     }
 };
 
-using key_t = int;
+static size_t f_forest_comparisons = 0;
+using f_forest_comparator = counting_comparator<&f_forest_comparisons>;
+using f_forest = hsf::frequency_forest<hsf::capacity, std::map, int, f_forest_comparator>;
 
-static size_t rbtree_comparisons = 0;
-using rbtree_comparator = counting_comparator<&rbtree_comparisons>;
-using rbtree = std::set<key_t, rbtree_comparator>;
+static size_t learned_f_forest_comparisons = 0;
+using learned_f_forest_comparator = counting_comparator<&learned_f_forest_comparisons>;
+using learned_f_forest = hsf::learned_frequency_forest<hsf::capacity, std::map, int, learned_f_forest_comparator>;
 
-static size_t fforest_comparisons = 0;
-using fforest_comparator = counting_comparator<&fforest_comparisons>;
-using fforest = hsf::frequency_forest<hsf::capacity, std::map, key_t, fforest_comparator>;
+static size_t r_forest_comparisons = 0;
+using r_forest_comparator = counting_comparator<&r_forest_comparisons>;
+using r_forest = hsf::recency_forest<hsf::capacity, std::map, int, r_forest_comparator>;
 
-static size_t learned_fforest_comparisons = 0;
-using learned_fforest_comparator = counting_comparator<&learned_fforest_comparisons>;
-using learned_fforest = hsf::learned_frequency_forest<hsf::capacity, std::map, key_t, learned_fforest_comparator>;
-
-static size_t rforest_comparisons = 0;
-using rforest_comparator = counting_comparator<&rforest_comparisons>;
-using rforest = hsf::recency_forest<hsf::capacity, std::map, key_t, rforest_comparator>;
-
-static size_t learned_rforest_comparisons = 0;
-using learned_rforest_comparator = counting_comparator<&learned_rforest_comparisons>;
-using learned_rforest = hsf::learned_recency_forest<hsf::capacity, std::map, key_t, learned_rforest_comparator>;
+static size_t learned_r_forest_comparisons = 0;
+using learned_r_forest_comparator = counting_comparator<&learned_r_forest_comparisons>;
+using learned_r_forest = hsf::learned_recency_forest<hsf::capacity, std::map, int, learned_r_forest_comparator>;
 
 static size_t learned_treap_comparisons = 0;
 using learned_treap_comparator = counting_comparator<&learned_treap_comparisons>;
-using learned_treap = hsf::bench::treap<key_t, learned_treap_comparator>;
+using learned_treap = hsf::bench::treap<int, learned_treap_comparator>;
 
 static size_t robustsl_comparisons = 0;
 using robustsl_comparator = counting_comparator<&robustsl_comparisons>;
-using robustsl = hsf::bench::skiplist<key_t, robustsl_comparator>;
+using robustsl = hsf::bench::skiplist<int, robustsl_comparator>;
 
-auto generate_zipf_queries(size_t num_keys, size_t num_queries, double alpha, std::mt19937& gen) {
-    zipfian_int_distribution<key_t> zipf(0, num_keys - 1, alpha);
-    
-    std::vector<size_t> perm(num_keys);
-    std::iota(perm.begin(), perm.end(), 0);
-    std::shuffle(perm.begin(), perm.end(), gen);
-
-    std::vector<key_t> queries(num_queries);
-    for (size_t i = 0; i < num_queries; i++) {
-        queries[i] = perm[zipf(gen)];
-    }
-
-    return queries;
-}
-
-auto compute_accesses(const std::vector<key_t>& queries, size_t num_keys) {
-    std::vector<std::deque<size_t>> accesses(num_keys);
-    
-    size_t distinct_accesses = 0;
-    size_t prev_query = 0;
-    for (const auto& key : queries) {
-        auto& queue = accesses[key];
-        size_t prev_access = queue.empty() ? 0 : queue.back();
-        queue.push_back(distinct_accesses - prev_access);
-
-        if (key != prev_query) {
-            distinct_accesses++;
-        }
-        prev_query = key;
-    }
-
-    return accesses;
-}
-
-auto compute_ranks(const std::vector<std::deque<size_t>>& accesses) {
-    std::vector<size_t> ranks(accesses.size());
-    std::vector<std::pair<size_t, size_t>> indexed_frequencies(accesses.size());
-    for (size_t i = 0; i < accesses.size(); i++) {
-        indexed_frequencies[i] = std::make_pair(i, accesses[i].size());
-    }
-
-    std::sort(indexed_frequencies.begin(), indexed_frequencies.end(), [](auto& left, auto& right) {
-        if (left.second != right.second) {
-            return left.second > right.second;
-        }
-        return left.first < right.first;
-    });
-
-    for (size_t i = 0; i < accesses.size(); ++i) {
-        ranks[indexed_frequencies[i].first] = i;
-    }
-
-    return ranks;
-}
-
-auto compute_adv_ranks(const std::vector<std::deque<size_t>>& accesses, double delta) {
-    // delta = 0 is perfect rank, delta = 0.99 is adversarial
-    std::vector<size_t> true_ranks = compute_ranks(accesses);
-
-    int n = accesses.size();
-    std::vector<size_t> adv_ranks(n);
-
-    for (size_t i = 0; i < n; ++i) {
-        double r = static_cast<double>(true_ranks[i]);
-        double mirror = static_cast<double>(n) - r - 1.0;
-        double perturbed = r * (1.0 - delta) + mirror * delta;
-
-        size_t r_i = static_cast<size_t>(std::lround(perturbed));
-        if (r_i >= n) r_i = n - 1;    // clamping
-        adv_ranks[i] = r_i;
-    }
-
-    return adv_ranks;
-}
+static size_t rb_tree_comparisons = 0;
+using rb_tree_comparator = counting_comparator<&rb_tree_comparisons>;
+using rb_tree = std::set<int, rb_tree_comparator>;
 
 void reset_comparisons() {
-    fforest_comparisons = 0;
-    learned_fforest_comparisons = 0;
-    rforest_comparisons = 0;
-    learned_rforest_comparisons = 0;
-    rbtree_comparisons = 0;
-    robustsl_comparisons = 0;
+    rb_tree_comparisons = 0;
+    f_forest_comparisons = 0;
+    learned_f_forest_comparisons = 0;
+    r_forest_comparisons = 0;
+    learned_r_forest_comparisons = 0;
     learned_treap_comparisons = 0;
+    robustsl_comparisons = 0;
 }
 
-py::dict benchmark(const std::vector<key_t>& queries, size_t num_keys, double delta, std::mt19937& gen) {
-    auto accesses = compute_accesses(queries, num_keys);
-    auto ranks = compute_adv_ranks(accesses, delta);
-    auto levels = hsf::bench::skiplist_levels(accesses, num_keys, queries.size(), gen);
+template <typename Gen>
+py::dict benchmark(const std::vector<int>& queries, const std::vector<size_t>& frequencies, std::vector<std::deque<size_t>>& accesses, Gen& gen) {
+    auto ranks = hsf::bench::compute_ranks(frequencies);
+    auto levels = hsf::bench::skiplist_levels(frequencies, queries.size(), gen);
+    size_t num_keys = frequencies.size();
+    size_t num_queries = queries.size();
 
-    fforest ff(hsf::capacity(1.0, 2.0), hsf::capacity(1.0, 2.0));
-    learned_fforest lff(hsf::capacity(1.0, 1.1), hsf::capacity(1.1, 1.1));
-    rforest rf(hsf::capacity(1.0, 2.0), hsf::capacity(1.0, 2.0));
-    learned_rforest lrf(hsf::capacity(1.0, 1.1), hsf::capacity(1.1, 1.1));
-    rbtree rb;
-    robustsl sl;
+    f_forest ff(hsf::capacity(1.0, 2.0), hsf::capacity(1.0, 2.0));
+    learned_f_forest lff(hsf::capacity(1.0, 1.1), hsf::capacity(1.1, 1.1));
+    r_forest rf(hsf::capacity(1.0, 2.0), hsf::capacity(1.0, 2.0));
+    learned_r_forest lrf(hsf::capacity(1.0, 1.1), hsf::capacity(1.1, 1.1));
     learned_treap lt;
+    robustsl rsl;
+    rb_tree rb;
 
     reset_comparisons();
-    for (key_t key = 0; key < num_keys; key++) {
+    for (int key = 0; key < num_keys; key++) {
         ff.insert(key);
         lff.insert(key, ranks[key]);
         rf.insert(key);
         lrf.insert(key, accesses[key].empty() ? -1 : accesses[key].front());
-        rb.insert(key);
-        sl.insert(key, levels[key]);
         lt.insert(key, ranks[key]);
+        rsl.insert(key, levels[key]);
+        rb.insert(key);
     }
 
     py::dict insert_stats;
@@ -169,59 +93,59 @@ py::dict benchmark(const std::vector<key_t>& queries, size_t num_keys, double de
     py::dict insert_stats_compactions;
     py::dict insert_stats_mispredictions;
     py::dict insert_stats_promotions;
-    
-    insert_stats_comparisons["rbtree"] = double(rbtree_comparisons) / num_keys;
-    insert_stats_comparisons["f-forest"] = double(fforest_comparisons) / num_keys;
-    insert_stats_comparisons["learned-f-forest"] = double(learned_fforest_comparisons) / num_keys;
-    insert_stats_comparisons["r-forest"] = double(rforest_comparisons) / num_keys;
-    insert_stats_comparisons["learned-r-forest"] = double(learned_rforest_comparisons) / num_keys;
-    insert_stats_comparisons["robust-sl"] = double(robustsl_comparisons) / num_keys;
-    insert_stats_comparisons["learned-treap"] = double(learned_treap_comparisons) / num_keys;
-    
-    insert_stats_compactions["f-forest"] = ff.compactions_;
-    insert_stats_compactions["learned-f-forest"] = lff.compactions_;
-    insert_stats_compactions["r-forest"] = rf.compactions_;
-    insert_stats_compactions["learned-r-forest"] = lrf.compactions_;
 
-    insert_stats_mispredictions["f-forest"] = ff.mispredictions_;
-    insert_stats_mispredictions["learned-f-forest"] = lff.mispredictions_;
-    insert_stats_mispredictions["r-forest"] = rf.mispredictions_;
-    insert_stats_mispredictions["learned-r-forest"] = lrf.mispredictions_;
+    insert_stats_comparisons["f_forest"] = double(f_forest_comparisons) / num_keys;
+    insert_stats_comparisons["learned_f_forest"] = double(learned_f_forest_comparisons) / num_keys;
+    insert_stats_comparisons["r_forest"] = double(r_forest_comparisons) / num_keys;
+    insert_stats_comparisons["learned_r_forest"] = double(learned_r_forest_comparisons) / num_keys;
+    insert_stats_comparisons["learned_treap"] = double(learned_treap_comparisons) / num_keys;
+    insert_stats_comparisons["robustsl"] = double(robustsl_comparisons) / num_keys;
+    insert_stats_comparisons["rb_tree"] = double(rb_tree_comparisons) / num_keys;
 
-    insert_stats_promotions["f-forest"] = ff.promotions_;
-    insert_stats_promotions["learned-f-forest"] = lff.promotions_;
-    insert_stats_promotions["r-forest"] = rf.promotions_;
-    insert_stats_promotions["learned-r-forest"] = lrf.promotions_;
+    insert_stats_compactions["f_forest"] = ff.compactions_;
+    insert_stats_compactions["learned_f_forest"] = lff.compactions_;
+    insert_stats_compactions["r_forest"] = rf.compactions_;
+    insert_stats_compactions["learned_r_forest"] = lrf.compactions_;
+
+    insert_stats_mispredictions["f_forest"] = ff.mispredictions_;
+    insert_stats_mispredictions["learned_f_forest"] = lff.mispredictions_;
+    insert_stats_mispredictions["r_forest"] = rf.mispredictions_;
+    insert_stats_mispredictions["learned_r_forest"] = lrf.mispredictions_;
+
+    insert_stats_promotions["f_forest"] = ff.promotions_;
+    insert_stats_promotions["learned_f_forest"] = lff.promotions_;
+    insert_stats_promotions["r_forest"] = rf.promotions_;
+    insert_stats_promotions["learned_r_forest"] = lrf.promotions_;
 
     insert_stats["comparisons"] = insert_stats_comparisons;
     insert_stats["compactions"] = insert_stats_compactions;
     insert_stats["mispredictions"] = insert_stats_mispredictions;
     insert_stats["promotions"] = insert_stats_promotions;
-    
+
     reset_comparisons();
-    for (const auto& key : queries) {
-        auto it1 = ff.find(key);
-        assert(it1 != ff.end() && it1->first == key);
+    for (const auto& query : queries) {
+        auto it1 = ff.find(query);
+        assert(it1 != ff.end() && it1->first == query);
 
-        auto it2 = lff.find(key, ranks[key]);
-        assert(it2 != lff.end() && it2->first == key);
+        auto it2 = lff.find(query, ranks[query]);
+        assert(it2 != lff.end() && it2->first == query);
 
-        auto it3 = rf.find(key);
-        assert(it3 != rf.end() && it3->first == key);
+        auto it3 = rf.find(query);
+        assert(it3 != rf.end() && it3->first == query);
 
-        size_t prev_access = accesses[key].front();
-        accesses[key].pop_front();
-        size_t next_access = accesses[key].empty() ? -1 : accesses[key].front();
-        auto it4 = lrf.find(key, prev_access, next_access);
+        size_t prev_access = accesses[query].front();
+        accesses[query].pop_front();
+        size_t next_access = accesses[query].empty() ? -1 : accesses[query].front();
+        auto it4 = lrf.find(query, prev_access, next_access);
 
-        auto it5 = rb.find(key);
-        assert(it5 != rb.end() && *it5 == key);
+        auto it5 = lt.find(query);
+        assert(it5 != nullptr && it5->key == query);
 
-        auto it6 = sl.find(key);
-        assert(it6 != sl.end());
+        auto it6 = rsl.find(query);
+        assert(it6 != rsl.end());
 
-        auto it7 = lt.find(key);
-        assert(it7 != nullptr && it7->key == key);
+        auto it7 = rb.find(query);
+        assert(it7 != rb.end() && *it7 == query);
     }
 
     py::dict query_stats;
@@ -230,28 +154,28 @@ py::dict benchmark(const std::vector<key_t>& queries, size_t num_keys, double de
     py::dict query_stats_mispredictions;
     py::dict query_stats_promotions;
 
-    query_stats_comparisons["rbtree"] = double(rbtree_comparisons) / queries.size();
-    query_stats_comparisons["f-forest"] = double(fforest_comparisons) / queries.size();
-    query_stats_comparisons["learned-f-forest"] = double(learned_fforest_comparisons) / queries.size();
-    query_stats_comparisons["r-forest"] = double(rforest_comparisons) / queries.size();
-    query_stats_comparisons["learned-r-forest"] = double(learned_rforest_comparisons) / queries.size();
-    query_stats_comparisons["robust-sl"] = double(robustsl_comparisons) / queries.size();
-    query_stats_comparisons["learned-treap"] = double(learned_treap_comparisons) / queries.size();
+    query_stats_comparisons["f_forest"] = double(f_forest_comparisons) / num_queries;
+    query_stats_comparisons["learned_f_forest"] = double(learned_f_forest_comparisons) / num_queries;
+    query_stats_comparisons["r_forest"] = double(r_forest_comparisons) / num_queries;
+    query_stats_comparisons["learned_r_forest"] = double(learned_r_forest_comparisons) / num_queries;
+    query_stats_comparisons["learned_treap"] = double(learned_treap_comparisons) / num_queries;
+    query_stats_comparisons["robustsl"] = double(robustsl_comparisons) / num_queries;
+    query_stats_comparisons["rb_tree"] = double(rb_tree_comparisons) / num_queries;
 
-    query_stats_compactions["f-forest"] = ff.compactions_;
-    query_stats_compactions["learned-f-forest"] = lff.compactions_;
-    query_stats_compactions["r-forest"] = rf.compactions_;
-    query_stats_compactions["learned-r-forest"] = lrf.compactions_;
+    query_stats_compactions["f_forest"] = ff.compactions_;
+    query_stats_compactions["learned_f_forest"] = lff.compactions_;
+    query_stats_compactions["r_forest"] = rf.compactions_;
+    query_stats_compactions["learned_r_forest"] = lrf.compactions_;
 
-    query_stats_mispredictions["f-forest"] = ff.mispredictions_;
-    query_stats_mispredictions["learned-f-forest"] = lff.mispredictions_;
-    query_stats_mispredictions["r-forest"] = rf.mispredictions_;
-    query_stats_mispredictions["learned-r-forest"] = lrf.mispredictions_;
+    query_stats_mispredictions["f_forest"] = ff.mispredictions_;
+    query_stats_mispredictions["learned_f_forest"] = lff.mispredictions_;
+    query_stats_mispredictions["r_forest"] = rf.mispredictions_;
+    query_stats_mispredictions["learned_r_forest"] = lrf.mispredictions_;
 
-    query_stats_promotions["f-forest"] = ff.promotions_;
-    query_stats_promotions["learned-f-forest"] = lff.promotions_;
-    query_stats_promotions["r-forest"] = rf.promotions_;
-    query_stats_promotions["learned-r-forest"] = lrf.promotions_;
+    query_stats_promotions["f_forest"] = ff.promotions_;
+    query_stats_promotions["learned_f_forest"] = lff.promotions_;
+    query_stats_promotions["r_forest"] = rf.promotions_;
+    query_stats_promotions["learned_r_forest"] = lrf.promotions_;
 
     query_stats["comparisons"] = query_stats_comparisons;
     query_stats["compactions"] = query_stats_compactions;
@@ -266,7 +190,7 @@ py::dict benchmark(const std::vector<key_t>& queries, size_t num_keys, double de
 }
 
 PYBIND11_MODULE(benchmark_module, m) {
-    m.doc() = "Benchmarking module for search-forests";
+    m.doc() = "Benchmarking module for search forests";
 
     py::class_<std::mt19937>(m, "RandomEngine")
         .def(py::init<unsigned long>(), py::arg("seed"))
@@ -275,12 +199,22 @@ PYBIND11_MODULE(benchmark_module, m) {
         });
 
     m.def("generate_zipf_queries",
-          &generate_zipf_queries,
+          &hsf::bench::generate_zipf_queries<int, std::mt19937>,
           "generate_zipf_queries(num_keys: int, num_queries: int, alpha: float, gen: RandomEngine) -> List[int]",
           py::arg("num_keys"), py::arg("num_queries"), py::arg("alpha"), py::arg("gen"));
+    
+    m.def("generate_noisy_frequencies",
+          &hsf::bench::generate_noisy_frequencies<int, std::mt19937>,
+          "generate_noisy_frequencies(queries: List[int], num_keys: int, delta: int, gen: RandomEngine) -> List[int]",
+          py::arg("queries"), py::arg("num_keys"), py::arg("delta"), py::arg("gen"));
+    
+    m.def("generate_noisy_accesses",
+          &hsf::bench::generate_noisy_accesses<int, std::mt19937>,
+          "generate_noisy_accesses(queries: List[int], num_keys: int, delta: int, gen: RandomEngine) -> List[List[int]]",
+          py::arg("queries"), py::arg("num_keys"), py::arg("delta"), py::arg("gen"));
 
     m.def("benchmark",
-          &benchmark,
-          "benchmark(queries: List[int], num_keys: int, delta: float, gen: RandomEngine) -> Dict[str, Dict[str, float]]",
-          py::arg("queries"), py::arg("num_keys"), py::arg("delta"), py::arg("gen"));
+          &benchmark<std::mt19937>,
+          "benchmark(queries: List[int], frequencies: List[int], accesses: List[List[int]], gen: RandomEngine) -> Dict[str, Dict[str, float]]",
+          py::arg("queries"), py::arg("frequencies"), py::arg("accesses"), py::arg("gen"));
 }

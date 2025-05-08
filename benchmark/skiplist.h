@@ -16,9 +16,10 @@ template <typename Key, typename Compare>
 using skiplist = goodliffe::skip_list<Key, Compare>;
 
 template <typename Gen>
-std::vector<size_t> skiplist_levels(const std::vector<std::deque<size_t>>& accesses, size_t num_keys, size_t num_queries, Gen& gen) {
+std::vector<size_t> skiplist_levels(const std::vector<size_t>& frequencies, size_t num_queries, Gen& gen) {
     constexpr double p = 0.368;
     constexpr double theta = 0.05;
+    size_t num_keys = frequencies.size();
     size_t K = 1 + std::ceil(std::log2(std::log2(num_keys)) - std::log2(2 * std::log2(theta) / std::log2(p)));
 
     std::vector<int> D(K + 1, 0);
@@ -31,7 +32,7 @@ std::vector<size_t> skiplist_levels(const std::vector<std::deque<size_t>>& acces
 
     std::vector<size_t> levels(num_keys);
     for (int i = 0; i < num_keys; i++) {
-        double f = double(accesses[i].size()) / double(num_queries);
+        double f = frequencies[i] / double(num_queries);
         size_t c;
         if (f >= theta) {
             c = 0;
