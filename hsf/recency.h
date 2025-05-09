@@ -156,6 +156,7 @@ public:
             ? parent_type::levels() - 1
             : prediction_to_level(next_access, parent_type::min_capacity_);
 
+        it->second = next_access;
         if (level != next_level) {
             it = move_iterator(it, next_level);
             compact_level(next_level);

@@ -2,6 +2,7 @@
 #define HSF_HSF_H
 
 #include <algorithm>
+#include <cmath>
 #include <vector>
 
 namespace hsf {

@@ -19,14 +19,14 @@ struct range_tree {
     std::vector<std::vector<size_t>> nodes;
 
     range_tree(std::vector<size_t>& data) {
-        rangemax = data.size()-1;
+        rangemax = data.size() - 1;
         nodes.resize(4 * data.size());
         build(1, 0, rangemax, data);
     }
 
     size_t query(size_t l, size_t r, size_t val) {
         if (l > rangemax) {
-            return INT_MAX;
+            return -1;
         }
         r = std::min(r, rangemax);
         return query(1, 0, rangemax, l, r, val);
@@ -116,22 +116,22 @@ std::vector<size_t> generate_noisy_frequencies(const std::vector<Key>& queries, 
 
 template <typename Key, typename Gen>
 std::vector<std::deque<size_t>> generate_noisy_accesses(const std::vector<Key>& queries, size_t num_keys, size_t epsilon, size_t delta, Gen& gen) {
-    std::vector<size_t> next_accesses(queries.size());
-    std::vector<size_t> last_seen(num_keys, INT_MAX);
+    std::vector<size_t> next_access(queries.size());
+    std::vector<size_t> last_seen(num_keys, -1);
 
-    for (int i = queries.size()-1; i >= 0; i--) {
-        next_accesses[i] = last_seen[queries[i]];
+    for (long i = queries.size() - 1; i >= 0; i--) {
+        next_access[i] = last_seen[queries[i]];
         last_seen[queries[i]] = i;
     }
 
     std::vector<std::deque<size_t>> accesses(num_keys);
-    range_tree tree(next_accesses);
+    range_tree tree(next_access);
     for (size_t i = 0; i < queries.size(); i++) {
-        size_t next_access = tree.query(i + 1, next_accesses[i] - 1, next_accesses[i]);
-        if (next_access != INT_MAX) {
-            next_access = scale_and_shift(next_access, num_keys, epsilon, delta, gen);
+        if (next_access[i] != -1) {
+            size_t next = next_access[i] ? tree.query(i + 1, next_access[i] - 1, next_access[i]) : 0;
+            scale_and_shift(next, num_keys, epsilon, delta, gen);
+            accesses[queries[i]].push_back(next);
         }
-        accesses[queries[i]].push_back(next_access);
     }
 
     return accesses;
