@@ -10,13 +10,16 @@ using learned_r_forest = hsf::learned_recency_forest<hsf::capacity, std::map, in
 
 int main() {
     learned_r_forest lrf(hsf::capacity(1.0, 1.1), hsf::capacity(2.0, 1.1));
+
+    static constexpr size_t num_keys = 100'000;
+    static constexpr size_t num_queries = 100'000;
     
     std::mt19937 gen;
-    auto queries = hsf::bench::generate_zipf_queries<int>(10000, 10000, 1.0, gen);
-    auto accesses = hsf::bench::generate_noisy_accesses(queries, 10000, 1, 0, gen);
+    auto queries = hsf::bench::generate_zipf_queries<int>(num_keys, num_queries, 1.0, gen);
+    auto accesses = hsf::bench::generate_noisy_accesses(queries, num_keys, 1, 0, gen);
     
-    for (int i = 0; i < 10000; i++) {
-        lrf.insert(i, accesses[i].empty() ? -1 : accesses[i].front());
+    for (int i = 0; i < num_keys; i++) {
+        lrf.insert(i, accesses[i].empty() ? -1 : accesses[i].front() + (num_keys - i - 1));
     }
 
     for (const auto& query : queries) {
