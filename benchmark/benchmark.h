@@ -81,7 +81,7 @@ std::vector<Key> generate_zipf_queries(size_t num_keys, size_t num_queries, doub
 template <typename Gen>
 size_t scale_and_shift(size_t value, size_t max_value, size_t epsilon, size_t delta, Gen& gen) {
     if (epsilon < 1.0) {
-        throw std::invalid_argument("invalid error");
+        throw std::invalid_argument("invalid epsilon");
     }
     
     std::uniform_real_distribution<double> scale(1.0, std::nextafter(epsilon, DBL_MAX));
