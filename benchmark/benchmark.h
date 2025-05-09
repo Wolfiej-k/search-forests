@@ -14,6 +14,55 @@ namespace hsf {
 
 namespace bench {
 
+struct range_tree {
+    size_t rangemax;
+    std::vector<std::vector<size_t>> nodes;
+
+    range_tree(std::vector<size_t>& data) {
+        rangemax = data.size()-1;
+        nodes.resize(4 * data.size());
+        build(1, 0, rangemax, data);
+    }
+
+    size_t query(size_t l, size_t r, size_t val) {
+        if (l > rangemax) {
+            return INT_MAX;
+        }
+        r = std::min(r, rangemax);
+        return query(1, 0, rangemax, l, r, val);
+    }
+
+private:
+    void build(size_t v, size_t l, size_t r, std::vector<size_t>& data) {
+        if (l == r) {
+            nodes[v].push_back(data[l]);
+            assert(nodes[v].size() == 1);
+        } else {
+            int m = (l + r) / 2;
+            build(2 * v, l, m, data);
+            build(2 * v + 1, m + 1, r, data);
+            nodes[v].resize(r - l + 1);
+            std::merge(nodes[2 * v].begin(), nodes[2 * v].end(),
+                        nodes[2 * v + 1].begin(), nodes[2 * v + 1].end(),
+                        nodes[v].begin());
+        }
+    }
+
+    size_t query(size_t v, size_t l, size_t r, size_t ql, size_t qr, size_t val) {
+        if (ql > qr) {
+            return 0;
+        } else if (l == ql && r == qr) {
+            auto it = std::upper_bound(nodes[v].begin(), nodes[v].end(), val);
+            return nodes[v].end() - it;
+        } else {
+            size_t m = (l + r) / 2;
+            size_t left = query(2 * v, l, m, ql, std::min(m, qr), val);
+            size_t right = query(2 * v + 1, m + 1, r, std::max(ql, m + 1), qr, val);
+            return left + right;
+        }
+    }
+};
+
 template <typename Key, typename Gen>
 std::vector<Key> generate_zipf_queries(size_t num_keys, size_t num_queries, double alpha, Gen& gen) {
     std::vector<size_t> perm(num_keys);
@@ -67,20 +116,22 @@ std::vector<size_t> generate_noisy_frequencies(const std::vector<Key>& queries, 
 
 template <typename Key, typename Gen>
 std::vector<std::deque<size_t>> generate_noisy_accesses(const std::vector<Key>& queries, size_t num_keys, size_t epsilon, size_t delta, Gen& gen) {
+    std::vector<size_t> next_accesses(queries.size());
+    std::vector<size_t> last_seen(num_keys, INT_MAX);
+
+    for (int i = queries.size()-1; i >= 0; i--) {
+        next_accesses[i] = last_seen[queries[i]];
+        last_seen[queries[i]] = i;
+    }
+
     std::vector<std::deque<size_t>> accesses(num_keys);
-
-    size_t distinct_accesses = 0;
-    size_t prev_query = 0;
-    for (const auto& query : queries) {
-        auto& queue = accesses[query];
-        size_t prev_access = queue.empty() ? 0 : queue.back();
-        size_t next_access = distinct_accesses - prev_access;
-        queue.push_back(scale_and_shift(next_access, num_keys, epsilon, delta, gen));
-
-        if (query != prev_query) {
-            distinct_accesses++;
+    range_tree tree(next_accesses);
+    for (size_t i = 0; i < queries.size(); i++) {
+        size_t next_access = tree.query(i + 1, next_accesses[i] - 1, next_accesses[i]);
+        if (next_access != INT_MAX) {
+            next_access = scale_and_shift(next_access, num_keys, epsilon, delta, gen);
         }
-        prev_query = query;
+        accesses[queries[i]].push_back(next_access);
     }
 
     return accesses;
