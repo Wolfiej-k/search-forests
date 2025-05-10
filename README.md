@@ -1,0 +1,3 @@
+## Hierarchical Search Forests
+
+We give reference implementations of the *frequency-leveled search forest* (F-forest) and the *recency-leveled search forest* (R-forest) along with their learning-augmented variants. The `hsf/` subfolder contains STL-style implementations of both data structures, while `benchmark/` contains learned treaps and skip-lists as well as benchmarking utilities. To reproduce our experiments, see `experiments.cpp` and `experiments.ipynb`; the Makefile target for Python bindings is `make experiments` (i.e., on Linux).
