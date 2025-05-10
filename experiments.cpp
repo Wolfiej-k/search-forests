@@ -67,8 +67,9 @@ py::dict benchmark(
     const std::vector<int>& queries, 
     const std::vector<size_t>& frequencies, 
     const std::vector<size_t>& ranks, 
-    std::vector<std::deque<size_t>>& accesses, 
-    Gen& gen
+    std::vector<std::deque<size_t>>& accesses,
+    Gen& gen,
+    bool sketch
 ) {    
     auto levels = hsf::bench::skiplist_levels(frequencies, queries.size(), gen);
     size_t num_keys = frequencies.size();
@@ -87,7 +88,7 @@ py::dict benchmark(
         ff.insert(key);
         lff.insert(key, ranks[key]);
         rf.insert(key);
-
+        
         if (!accesses[key].empty()) {
             accesses[key].front() += num_keys - key - 1;
             lrf.insert(key, accesses[key].front());
@@ -189,6 +190,29 @@ py::dict benchmark(
     query_stats_promotions["r_forest"] = rf.promotions_;
     query_stats_promotions["learned_r_forest"] = lrf.promotions_;
 
+    if (sketch) {
+        hsf::prediction_sketch<int, uint32_t> sketch_half(num_keys, 2);
+        hsf::prediction_sketch<int, uint32_t> sketch_quarter(num_keys / 2, 2);
+        for (int key = 0; key < num_keys; key++) {
+            sketch_half.insert(key, ranks[key]);
+            sketch_quarter.insert(key, ranks[key]);
+        }
+
+        reset_comparisons();
+        for (const auto& query : queries) {
+            auto it = lff.find(query, sketch_half.get(query));
+            assert(it != lff.end() && it->first == query);
+        }
+        query_stats_comparisons["learned_f_forest_half"] = double(learned_f_forest_comparisons) / num_queries;
+
+        reset_comparisons();
+        for (const auto& query : queries) {
+            auto it = lff.find(query, sketch_quarter.get(query));
+            assert(it != lff.end() && it->first == query);
+        }
+        query_stats_comparisons["learned_f_forest_quarter"] = double(learned_f_forest_comparisons) / num_queries;
+    }
+
     query_stats["comparisons"] = query_stats_comparisons;
     query_stats["compactions"] = query_stats_compactions;
     query_stats["mispredictions"] = query_stats_mispredictions;
@@ -232,6 +256,6 @@ PYBIND11_MODULE(benchmark_module, m) {
 
     m.def("benchmark",
           &benchmark<std::mt19937>,
-          "benchmark(queries: List[int], frequencies: List[int], ranks: List[int], accesses: List[List[int]], gen: RandomEngine) -> Dict[str, Dict[str, float]]",
-          py::arg("queries"), py::arg("frequencies"), py::arg("ranks"), py::arg("accesses"), py::arg("gen"));
+          "benchmark(queries: List[int], frequencies: List[int], ranks: List[int], accesses: List[List[int]], gen: RandomEngine, sketch: bool) -> Dict[str, Dict[str, float]]",
+          py::arg("queries"), py::arg("frequencies"), py::arg("ranks"), py::arg("accesses"), py::arg("gen"), py::arg("sketch") = false);
 }

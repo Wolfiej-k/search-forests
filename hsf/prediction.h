@@ -20,10 +20,14 @@ public:
     prediction_sketch(size_t keys, size_t hashes) 
         : table_(hashes, std::vector<value_type>(keys, empty_cell)), 
           collision_(hashes, std::vector<bool>(keys, false)),
-          salts_(hashes) {
+          a_(hashes), b_(hashes) {
         std::mt19937_64 rng(2241);
-        for (auto& salt : salts_) {
-            salt = rng();
+        std::uniform_int_distribution<uint64_t> dist_a(1, prime - 1);
+        std::uniform_int_distribution<uint64_t> dist_b(0, prime - 1);
+
+        for (size_t i = 0; i < hashes; ++i) {
+            a_[i] = dist_a(rng);
+            b_[i] = dist_b(rng);
         }
     }
 
@@ -61,13 +65,17 @@ public:
 
 private:
     static constexpr value_type empty_cell = std::numeric_limits<value_type>::max();
+    static constexpr uint64_t prime = INT_MAX;
+    
     [[no_unique_address]] hash_type hasher_;
     std::vector<std::vector<value_type>> table_;
     std::vector<std::vector<bool>> collision_;
-    std::vector<size_t> salts_;
+    std::vector<uint64_t> a_;
+    std::vector<uint64_t> b_;
 
     size_t index(const key_type& key, size_t i) const {
-        return (hasher_(key) ^ salts_[i]) % table_[i].size();
+        uint64_t x = static_cast<uint64_t>(hasher_(key));
+        return ((a_[i] * x + b_[i]) % prime) % table_[i].size();
     }
 };
 
