@@ -84,10 +84,10 @@ struct treap {
         while (cur) {
             if (comp(key, cur->key)) {
                 cur = cur->left_child;
-            } else if (!comp(cur->key, key)) {
-                return cur;
-            } else {
+            } else if (comp(cur->key, key)) {
                 cur = cur->right_child;
+            } else {
+                return cur;
             }
         }
         return nullptr;

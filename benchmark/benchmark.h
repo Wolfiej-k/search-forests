@@ -129,14 +129,15 @@ std::vector<std::deque<size_t>> generate_noisy_accesses(const std::vector<Key>& 
     range_tree tree(next_access);
     for (size_t i = 0; i < queries.size(); i++) {
         if (!seen[queries[i]]) {
-            size_t next = i == 0 ? 0 : tree.query(0, i-1, i);
+            size_t next = i == 0 ? 0 : tree.query(0, i - 1, i);
+            next = scale_and_shift(next, num_keys, epsilon, delta, gen);
             accesses[queries[i]].push_back(next);
             seen[queries[i]] = true;
         } 
         
         if (next_access[i] != -1) {
             size_t next = next_access[i] ? tree.query(i + 1, next_access[i] - 1, next_access[i]) : 0;
-            scale_and_shift(next, num_keys, epsilon, delta, gen);
+            next = scale_and_shift(next, num_keys, epsilon, delta, gen);
             accesses[queries[i]].push_back(next);
         }
     }

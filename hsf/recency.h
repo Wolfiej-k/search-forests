@@ -162,6 +162,15 @@ public:
             compact_level(next_level);
         }
 
+        // if (next_access != -1) {
+        //     size_type next_level = prediction_to_level(next_access, parent_type::min_capacity_);
+        //     it->second = next_access;
+        //     if (level != next_level) {
+        //         it = move_iterator(it, next_level);
+        //         compact_level(next_level);
+        //     }
+        // }
+
         return it;
     }
 
@@ -195,7 +204,7 @@ private:
         auto [min_cap, max_cap] = parent_type::capacity(level);
         size_type level_size = parent_type::size(level);
 
-        if (level_size > max_cap) {
+        if (level_size > max_cap && level == parent_type::levels() - 1) {
             std::priority_queue<heap_element> max_accesses;
             for (const auto& [key, next_access] : parent_type::levels_[level]) {
                 if (max_accesses.size() < level_size - min_cap) {

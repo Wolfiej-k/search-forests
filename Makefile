@@ -5,7 +5,7 @@ DEBUGFLAGS := -g -O0
 PYBIND11_INCLUDE := $(shell python3 -m pybind11 --includes)
 PYTHON_SOABI := $(shell python3-config --extension-suffix)
 
-# LDFLAGS := -shared
+LDFLAGS := -shared
 
 all: main
 

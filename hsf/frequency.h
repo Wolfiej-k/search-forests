@@ -191,7 +191,7 @@ private:
         auto [min_cap, max_cap] = parent_type::capacity(level);
         size_type level_size = parent_type::size(level);
 
-        if (level_size > max_cap) {
+        if (level_size > max_cap && level == parent_type::levels() - 1) {
             std::priority_queue<heap_element> max_ranks;
             for (const auto& [key, rank] : parent_type::levels_[level]) {
                 if (max_ranks.size() < level_size - min_cap) {

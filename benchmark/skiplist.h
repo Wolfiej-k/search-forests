@@ -27,7 +27,7 @@ std::vector<size_t> skiplist_levels(const std::vector<size_t>& frequencies, size
 
     D[0] = std::ceil(std::log2(theta) / log2(p));
     for (int i = 1; i <= K; i++) {
-        D[i] = D[i-1] + std::ceil(std::log2(theta) / std::log2(p) * (1 << i));
+        D[i] = D[i - 1] + std::ceil(std::log2(theta) / std::log2(p) * (1 << i));
     }
 
     std::vector<size_t> levels(num_keys);
@@ -48,7 +48,7 @@ std::vector<size_t> skiplist_levels(const std::vector<size_t>& frequencies, size
     return levels;
 }
 
-}   
+}
 
 }
 

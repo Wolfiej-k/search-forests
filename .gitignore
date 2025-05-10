@@ -35,6 +35,7 @@ testrforest
 
 # Benchmarks
 model/*
+data/*
 *.pkl
 *.csv
 

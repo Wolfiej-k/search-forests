@@ -75,9 +75,9 @@ py::dict benchmark(
     size_t num_queries = queries.size();
 
     f_forest ff(hsf::capacity(1.0, 2.0), hsf::capacity(1.0, 2.0));
-    learned_f_forest lff(hsf::capacity(1.0, 1.1), hsf::capacity(2.0, 1.1));
+    learned_f_forest lff(hsf::capacity(1.0, 1.1), hsf::capacity(10.0, 1.1));
     r_forest rf(hsf::capacity(1.0, 2.0), hsf::capacity(1.0, 2.0));
-    learned_r_forest lrf(hsf::capacity(1.0, 1.1), hsf::capacity(2.0, 1.1));
+    learned_r_forest lrf(hsf::capacity(1.0, 1.1), hsf::capacity(10.0, 1.1));
     learned_treap lt;
     robustsl rsl;
     rb_tree rb;
@@ -87,7 +87,14 @@ py::dict benchmark(
         ff.insert(key);
         lff.insert(key, ranks[key]);
         rf.insert(key);
-        lrf.insert(key, accesses[key].empty() ? -1 : accesses[key].front());
+
+        if (!accesses[key].empty()) {
+            accesses[key].front() += num_keys - key - 1;
+            lrf.insert(key, accesses[key].front());
+        } else {
+            lrf.insert(key);
+        }
+
         lt.insert(key, ranks[key]);
         rsl.insert(key, levels[key]);
         rb.insert(key);
